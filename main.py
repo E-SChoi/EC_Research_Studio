@@ -1,0 +1,386 @@
+from pathlib import Path
+from datetime import datetime
+import pandas as pd
+import streamlit as st
+
+from project.manager import create_project, list_projects, open_project, create_experiment
+from utils.json_io import load_json, save_json
+from core.dpv import parse_concentration as parse_dpv_concentration, run_dpv_analysis
+from core.swv import parse_concentration as parse_swv_concentration, run_swv_analysis
+from core.eis import parse_concentration as parse_eis_concentration, run_eis_analysis
+from figures.builder import collect_figure_files, make_composite_figure, suggest_next_figure_name, PPTX_AVAILABLE
+from database.db import init_database, add_record, get_table, get_names, seed_default_database
+
+st.set_page_config(page_title="EC Research Studio", layout="wide")
+st.title("EC Research Studio v0.7")
+st.caption("Project + Experiment + Database + Experiment Wizard + DPV/SWV/EIS + Figure Builder")
+
+st.sidebar.header("Project")
+mode = st.sidebar.radio("Mode", ["New Project", "Open Project"])
+
+if mode == "New Project":
+    project_name = st.sidebar.text_input("Project name", value="RNA_Aptamer_Test")
+    if st.sidebar.button("Create Project"):
+        project_path = create_project(project_name)
+        st.sidebar.success("Project created")
+        st.sidebar.code(str(project_path))
+
+projects = list_projects()
+if not projects:
+    st.info("왼쪽에서 New Project를 먼저 만들어줘.")
+    st.stop()
+
+selected_project = st.sidebar.selectbox("Select project", projects)
+project_path, project_info = open_project(selected_project)
+init_database(project_path)
+st.header(f"Project: {project_info['project_name']}")
+
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "Figure Builder", "Project Info"
+])
+
+with tab1:
+    st.subheader("New Experiment")
+    col1, col2 = st.columns(2)
+    with col1:
+        exp_name = st.text_input("Experiment name", value=f"Experiment_{len(project_info['experiments'])+1:03d}")
+        researcher = st.text_input("Researcher", value="")
+        sensor = st.text_input("Sensor / Electrode", value="Carbon SPE")
+        recognition = st.text_input("Recognition element", value="Aptamer")
+        target = st.text_input("Target", value="RNA")
+    with col2:
+        temperature = st.text_input("Temperature", value="75 °C")
+        reaction_time = st.text_input("Reaction time", value="10 min")
+        electrolyte = st.text_input("Electrolyte", value="5 mM Fe(CN)6 in 0.1 M KCl")
+        technique = st.multiselect("Techniques", ["DPV", "SWV", "EIS", "CV"], default=["DPV", "SWV", "EIS"])
+        comment = st.text_area("Comment", value="")
+
+    if st.button("Create Experiment"):
+        exp_info = {
+            "experiment_name": exp_name, "researcher": researcher, "sensor": sensor,
+            "recognition": recognition, "target": target, "temperature": temperature,
+            "reaction_time": reaction_time, "electrolyte": electrolyte, "technique": technique,
+            "comment": comment, "raw_files": [], "results": [], "publication_figures": []
+        }
+        exp_path = create_experiment(project_path, project_info, exp_info)
+        st.success(f"Experiment created: {exp_name}")
+        st.code(str(exp_path))
+        st.rerun()
+
+    st.divider()
+    experiments = project_info.get("experiments", [])
+    if experiments:
+        selected_exp = st.selectbox("Select experiment", experiments)
+        exp_json = Path(project_path) / "Experiments" / selected_exp / "experiment.json"
+        st.json(load_json(exp_json))
+    else:
+        st.info("아직 실험이 없습니다.")
+
+
+with tab2:
+    st.subheader("Experiment Wizard")
+
+    sensor_names = get_names(project_path, "sensors")
+    sample_names = get_names(project_path, "samples")
+    recognition_names = get_names(project_path, "recognition_elements")
+    reagent_names = get_names(project_path, "reagents")
+
+    if not sensor_names or not sample_names or not recognition_names or not reagent_names:
+        seed_default_database(project_path)
+        sensor_names = get_names(project_path, "sensors")
+        sample_names = get_names(project_path, "samples")
+        recognition_names = get_names(project_path, "recognition_elements")
+        reagent_names = get_names(project_path, "reagents")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        wizard_exp_name = st.text_input("New experiment name", value=f"Experiment_{len(project_info['experiments'])+1:03d}", key="wizard_exp_name")
+        wizard_researcher = st.text_input("Researcher", value="", key="wizard_researcher")
+        wizard_sensor = st.selectbox("Sensor", sensor_names, key="wizard_sensor")
+        wizard_sample = st.selectbox("Target / Sample", sample_names, key="wizard_sample")
+        wizard_recognition = st.selectbox("Recognition element", recognition_names, key="wizard_recognition")
+
+    with col2:
+        wizard_reagent = st.selectbox("Electrolyte / Reagent", reagent_names, key="wizard_reagent")
+        wizard_temperature = st.text_input("Temperature", value="75 °C", key="wizard_temperature")
+        wizard_reaction_time = st.text_input("Reaction time", value="10 min", key="wizard_reaction_time")
+        wizard_technique = st.multiselect("Techniques", ["DPV", "SWV", "EIS", "CV"], default=["DPV", "SWV", "EIS"], key="wizard_technique")
+        wizard_comment = st.text_area("Comment", value="", key="wizard_comment")
+
+    if st.button("Create Experiment from Wizard", type="primary"):
+        exp_info = {
+            "experiment_name": wizard_exp_name,
+            "researcher": wizard_researcher,
+            "sensor": wizard_sensor,
+            "recognition": wizard_recognition,
+            "target": wizard_sample,
+            "temperature": wizard_temperature,
+            "reaction_time": wizard_reaction_time,
+            "electrolyte": wizard_reagent,
+            "technique": wizard_technique,
+            "comment": wizard_comment,
+            "raw_files": [],
+            "results": [],
+            "publication_figures": []
+        }
+
+        exp_path = create_experiment(project_path, project_info, exp_info)
+        st.success(f"Experiment created from wizard: {wizard_exp_name}")
+        st.code(str(exp_path))
+        st.rerun()
+
+with tab3:
+    st.subheader("Research Database")
+
+    db_tabs = st.tabs(["Sensors", "Samples", "Recognition", "Reagents"])
+
+    with db_tabs[0]:
+        st.write("### Add sensor")
+        c1, c2 = st.columns(2)
+        with c1:
+            name = st.text_input("Sensor name", value="Carbon SPE", key="sensor_name")
+            electrode_type = st.text_input("Electrode type", value="Screen-printed electrode", key="sensor_type")
+        with c2:
+            material = st.text_input("Material", value="Carbon", key="sensor_material")
+            manufacturer = st.text_input("Manufacturer", value="", key="sensor_maker")
+        note = st.text_area("Sensor note", value="", key="sensor_note")
+        if st.button("Save Sensor"):
+            add_record(project_path, "sensors", {
+                "name": name,
+                "electrode_type": electrode_type,
+                "material": material,
+                "manufacturer": manufacturer,
+                "note": note
+            })
+            st.success("Sensor saved.")
+            st.rerun()
+        st.dataframe(pd.DataFrame(get_table(project_path, "sensors")), use_container_width=True)
+
+    with db_tabs[1]:
+        st.write("### Add sample / target")
+        c1, c2 = st.columns(2)
+        with c1:
+            name = st.text_input("Sample name", value="RNA target", key="sample_name")
+            target_type = st.text_input("Target type", value="RNA", key="sample_type")
+        with c2:
+            supplier = st.text_input("Supplier", value="", key="sample_supplier")
+            lot = st.text_input("Lot", value="", key="sample_lot")
+        sequence = st.text_area("Sequence", value="", key="sample_sequence")
+        note = st.text_area("Sample note", value="", key="sample_note")
+        if st.button("Save Sample"):
+            add_record(project_path, "samples", {
+                "name": name,
+                "target_type": target_type,
+                "sequence": sequence,
+                "supplier": supplier,
+                "lot": lot,
+                "note": note
+            })
+            st.success("Sample saved.")
+            st.rerun()
+        st.dataframe(pd.DataFrame(get_table(project_path, "samples")), use_container_width=True)
+
+    with db_tabs[2]:
+        st.write("### Add recognition element")
+        c1, c2 = st.columns(2)
+        with c1:
+            name = st.text_input("Recognition name", value="Aptamer", key="rec_name")
+            element_type = st.text_input("Element type", value="Aptamer", key="rec_type")
+        with c2:
+            modification = st.text_input("Modification", value="", key="rec_mod")
+            supplier = st.text_input("Supplier", value="", key="rec_supplier")
+        sequence = st.text_area("Sequence", value="", key="rec_sequence")
+        note = st.text_area("Recognition note", value="", key="rec_note")
+        if st.button("Save Recognition"):
+            add_record(project_path, "recognition_elements", {
+                "name": name,
+                "element_type": element_type,
+                "sequence": sequence,
+                "modification": modification,
+                "supplier": supplier,
+                "note": note
+            })
+            st.success("Recognition element saved.")
+            st.rerun()
+        st.dataframe(pd.DataFrame(get_table(project_path, "recognition_elements")), use_container_width=True)
+
+    with db_tabs[3]:
+        st.write("### Add reagent / electrolyte")
+        c1, c2 = st.columns(2)
+        with c1:
+            name = st.text_input("Reagent name", value="Fe(CN)6 / KCl", key="reagent_name")
+            reagent_type = st.text_input("Reagent type", value="Redox probe", key="reagent_type")
+        with c2:
+            concentration = st.text_input("Concentration", value="5 mM / 0.1 M", key="reagent_conc")
+            pH = st.text_input("pH", value="", key="reagent_ph")
+        composition = st.text_area("Composition", value="5 mM Fe(CN)6 in 0.1 M KCl", key="reagent_comp")
+        note = st.text_area("Reagent note", value="", key="reagent_note")
+        if st.button("Save Reagent"):
+            add_record(project_path, "reagents", {
+                "name": name,
+                "reagent_type": reagent_type,
+                "composition": composition,
+                "concentration": concentration,
+                "pH": pH,
+                "note": note
+            })
+            st.success("Reagent saved.")
+            st.rerun()
+        st.dataframe(pd.DataFrame(get_table(project_path, "reagents")), use_container_width=True)
+
+
+with tab4:
+    st.subheader("Import raw CSV files into experiment")
+    experiments = project_info.get("experiments", [])
+    if not experiments:
+        st.info("먼저 Experiment를 만들어줘.")
+    else:
+        selected_exp_import = st.selectbox("Experiment", experiments, key="import_exp")
+        data_type = st.selectbox("Data type", ["DPV", "SWV", "EIS", "CV"])
+        uploaded_files = st.file_uploader("Upload raw CSV files", type=["csv"], accept_multiple_files=True)
+        if st.button("Import files"):
+            exp_path = Path(project_path) / "Experiments" / selected_exp_import
+            raw_dir = exp_path / "RawData" / data_type
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            exp_json = exp_path / "experiment.json"
+            exp_info = load_json(exp_json)
+            imported = []
+            for file in uploaded_files:
+                save_path = raw_dir / file.name
+                with open(save_path, "wb") as f:
+                    f.write(file.getbuffer())
+                imported.append({
+                    "file": file.name, "data_type": data_type,
+                    "imported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "relative_path": str(Path("RawData") / data_type / file.name)
+                })
+            exp_info["raw_files"].extend(imported)
+            save_json(exp_json, exp_info)
+            st.success(f"{len(imported)} files imported.")
+            st.dataframe(pd.DataFrame(imported), use_container_width=True)
+
+def analysis_tab(method, parse_func, run_func, key_prefix):
+    st.subheader(f"Run {method} analysis")
+    experiments = project_info.get("experiments", [])
+    if not experiments:
+        st.info("먼저 Experiment를 만들어줘.")
+        return
+    selected_exp = st.selectbox("Experiment", experiments, key=f"{key_prefix}_exp")
+    exp_path = Path(project_path) / "Experiments" / selected_exp
+    raw_dir = exp_path / "RawData" / method
+    if not raw_dir.exists():
+        st.warning(f"이 experiment에는 {method} RawData 폴더가 없습니다. 먼저 Raw Data Import를 해줘.")
+        return
+    csv_files = sorted([p.name for p in raw_dir.glob("*.csv")])
+    if not csv_files:
+        st.warning(f"{method} CSV 파일이 없습니다.")
+        return
+    rows = []
+    for fname in csv_files:
+        label, conc_pm = parse_func(fname)
+        rows.append({"File": fname, "Label": label, "Concentration_pM": 0.0 if conc_pm is None else conc_pm})
+    edited_df = st.data_editor(pd.DataFrame(rows), use_container_width=True, num_rows="dynamic", key=f"{key_prefix}_table")
+    use_abs_fit = st.checkbox("Use absolute value for fitting", value=True, key=f"{key_prefix}_abs")
+    if st.button(f"Run {method} Analysis", type="primary", key=f"{key_prefix}_run"):
+        try:
+            with st.spinner(f"Running {method} analysis..."):
+                result = run_func(exp_path, edited_df, use_abs_fit=use_abs_fit)
+            exp_json = exp_path / "experiment.json"
+            exp_info = load_json(exp_json)
+            exp_info["results"].append({
+                "analysis": method, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "result_dir": result["result_dir"], "figure_dir": result["figure_dir"], "report_dir": result["report_dir"]
+            })
+            save_json(exp_json, exp_info)
+            st.success(f"{method} analysis complete.")
+            if method == "EIS":
+                st.write("Rct values"); st.dataframe(result["rct_df"], use_container_width=True)
+            else:
+                st.write("Peak values"); st.dataframe(result["peak_df"], use_container_width=True)
+            st.write("Fit summary"); st.dataframe(result["fit_summary_df"], use_container_width=True)
+            st.code(result["figure_dir"])
+        except Exception as e:
+            st.error(f"{method} analysis failed: {e}")
+
+with tab5:
+    analysis_tab("DPV", parse_dpv_concentration, run_dpv_analysis, "dpv")
+with tab6:
+    analysis_tab("SWV", parse_swv_concentration, run_swv_analysis, "swv")
+with tab7:
+    analysis_tab("EIS", parse_eis_concentration, run_eis_analysis, "eis")
+
+with tab8:
+    st.subheader("Figure Builder")
+
+    if PPTX_AVAILABLE:
+        st.success("PowerPoint export is available.")
+    else:
+        st.warning("PowerPoint export is unavailable. Install `python-pptx` to enable PPTX export. PNG/SVG/Caption still work.")
+
+    experiments = project_info.get("experiments", [])
+    if not experiments:
+        st.info("먼저 Experiment를 만들어줘.")
+    else:
+        selected_exp_fig = st.selectbox("Experiment", experiments, key="fig_exp")
+        exp_path = Path(project_path) / "Experiments" / selected_exp_fig
+        available = collect_figure_files(exp_path)
+
+        if not available:
+            st.warning("아직 생성된 figure가 없습니다. 먼저 DPV/SWV/EIS 분석을 실행해줘.")
+        else:
+            labels = [x["label"] for x in available]
+            selected_labels = st.multiselect("Select up to 4 figures", labels, default=labels[:4])
+            figure_name = st.text_input("Figure name", value=suggest_next_figure_name(exp_path))
+            layout = st.selectbox("Layout", ["auto", "2x2", "1x3"])
+            make_pptx = st.checkbox("Export PowerPoint (.pptx)", value=PPTX_AVAILABLE, disabled=not PPTX_AVAILABLE)
+
+            path_map = {x["label"]: x["path"] for x in available}
+
+            if st.button("Generate Composite Figure", type="primary"):
+                selected_paths = [path_map[l] for l in selected_labels]
+
+                try:
+                    result = make_composite_figure(
+                        exp_path,
+                        selected_paths,
+                        figure_name=figure_name,
+                        layout=layout,
+                        make_pptx=make_pptx
+                    )
+
+                    exp_json = exp_path / "experiment.json"
+                    exp_info = load_json(exp_json)
+                    exp_info.setdefault("publication_figures", [])
+                    exp_info["publication_figures"].append({
+                        "figure_name": figure_name,
+                        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "output_dir": result["output_dir"],
+                        "png": result["png"],
+                        "svg": result["svg"],
+                        "pptx": result["pptx"],
+                        "caption_path": result["caption_path"]
+                    })
+                    save_json(exp_json, exp_info)
+
+                    st.success("Composite figure generated.")
+                    st.info(result["pptx_message"])
+                    st.image(result["png"])
+
+                    st.write("Caption")
+                    st.text(result["caption"])
+
+                    st.write("Used files")
+                    st.dataframe(result["used_files"], use_container_width=True)
+
+                    st.write("Output folder")
+                    st.code(result["output_dir"])
+
+                except Exception as e:
+                    st.error(f"Figure generation failed: {e}")
+
+with tab9:
+    st.subheader("Project JSON")
+    st.json(project_info)
+    st.write("Project folder:")
+    st.code(str(project_path))
