@@ -10,10 +10,11 @@ from core.swv import parse_concentration as parse_swv_concentration, run_swv_ana
 from core.eis import parse_concentration as parse_eis_concentration, run_eis_analysis
 from figures.builder import collect_figure_files, make_composite_figure, suggest_next_figure_name, PPTX_AVAILABLE
 from database.db import init_database, add_record, get_table, get_names, seed_default_database
+from statistics.replicate import run_statistics_analysis
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v0.7")
-st.caption("Project + Experiment + Database + Experiment Wizard + DPV/SWV/EIS + Figure Builder")
+st.title("EC Research Studio v0.8")
+st.caption("Project + Experiment + Database + Statistics + DPV/SWV/EIS + Figure Builder")
 
 st.sidebar.header("Project")
 mode = st.sidebar.radio("Mode", ["New Project", "Open Project"])
@@ -35,8 +36,8 @@ project_path, project_info = open_project(selected_project)
 init_database(project_path)
 st.header(f"Project: {project_info['project_name']}")
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
-    "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "Figure Builder", "Project Info"
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+    "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "Statistics", "Figure Builder", "Project Info"
 ])
 
 with tab1:
@@ -310,7 +311,83 @@ with tab6:
 with tab7:
     analysis_tab("EIS", parse_eis_concentration, run_eis_analysis, "eis")
 
+
 with tab8:
+    st.subheader("Statistics Engine")
+
+    experiments = project_info.get("experiments", [])
+    if not experiments:
+        st.info("먼저 Experiment를 만들어줘.")
+    else:
+        selected_exp_stats = st.selectbox("Experiment", experiments, key="stats_exp")
+        method_stats = st.selectbox("Analysis type", ["DPV", "SWV", "EIS", "CV"], key="stats_method")
+
+        exp_path = Path(project_path) / "Experiments" / selected_exp_stats
+        result_dir = exp_path / "Results" / method_stats
+
+        candidate_files = []
+        if result_dir.exists():
+            candidate_files.extend([p for p in result_dir.rglob("*.csv") if p.is_file()])
+            candidate_files.extend([p for p in result_dir.rglob("*.xlsx") if p.is_file()])
+
+        input_mode = st.radio("Input mode", ["Use existing result file", "Upload statistics table"], key="stats_input_mode")
+        selected_input_path = None
+
+        if input_mode == "Use existing result file":
+            if not candidate_files:
+                st.warning("해당 analysis 결과 파일이 없습니다. 먼저 DPV/SWV/EIS 분석을 실행하거나 파일을 업로드해줘.")
+            else:
+                candidate_labels = [str(p.relative_to(result_dir)) for p in candidate_files]
+                selected_label = st.selectbox("Result file", candidate_labels, key="stats_file")
+                selected_input_path = candidate_files[candidate_labels.index(selected_label)]
+                st.code(str(selected_input_path))
+        else:
+            uploaded_stat_file = st.file_uploader("Upload CSV or Excel file for statistics", type=["csv", "xlsx"], key="stats_upload")
+            if uploaded_stat_file is not None:
+                stats_input_dir = exp_path / "Results" / method_stats / "Statistics" / "Input"
+                stats_input_dir.mkdir(parents=True, exist_ok=True)
+                selected_input_path = stats_input_dir / uploaded_stat_file.name
+                with open(selected_input_path, "wb") as f:
+                    f.write(uploaded_stat_file.getbuffer())
+                st.code(str(selected_input_path))
+
+        signal_column = st.text_input("Signal column name (optional)", value="", help="비워두면 DeltaDeltaPeak, Rct 등 주요 컬럼을 자동으로 찾습니다.", key="stats_signal_col")
+        signal_column = signal_column.strip() or None
+
+        error_bar = st.selectbox("Error bar", ["SD", "SEM", "CI95"], key="stats_errorbar")
+        lod_error_source = st.selectbox("LOD/LOQ sigma source", ["SD", "SEM"], key="stats_lod_sigma")
+
+        if st.button("Run Statistics", type="primary", key="stats_run"):
+            if selected_input_path is None:
+                st.error("Statistics input file이 필요합니다.")
+            else:
+                try:
+                    result = run_statistics_analysis(
+                        exp_path=exp_path,
+                        method=method_stats,
+                        input_file=selected_input_path,
+                        signal_column=signal_column,
+                        error_bar=error_bar,
+                        lod_error_source=lod_error_source,
+                    )
+
+                    st.success("Statistics analysis complete.")
+                    st.write("Replicate values")
+                    st.dataframe(result["replicate_df"], use_container_width=True)
+                    st.write("Statistics summary")
+                    st.dataframe(result["summary_df"], use_container_width=True)
+                    st.write("LOD / LOQ")
+                    st.dataframe(pd.DataFrame([result["lod_info"]]), use_container_width=True)
+                    st.write("Output folders")
+                    st.code(result["result_dir"])
+                    st.code(result["figure_dir"])
+                    st.code(result["report_dir"])
+
+                except Exception as e:
+                    st.error(f"Statistics analysis failed: {e}")
+
+
+with tab9:
     st.subheader("Figure Builder")
 
     if PPTX_AVAILABLE:
@@ -379,7 +456,7 @@ with tab8:
                 except Exception as e:
                     st.error(f"Figure generation failed: {e}")
 
-with tab9:
+with tab10:
     st.subheader("Project JSON")
     st.json(project_info)
     st.write("Project folder:")
