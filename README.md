@@ -1,27 +1,22 @@
-# EC Research Studio v1.1
+# EC Research Studio v1.2 Working Release
 
-## Electronic Lab Notebook
-- Experiment별 ELN entry 작성
-- Protocol / observation / result / next action 기록
-- 이미지, PDF, CSV, Excel, TXT 첨부
-- Notebook history 조회
-- Markdown export
-- Entry 삭제
-- 기존 실험 정보 자동 불러오기
+## 바로 사용하기 위한 핵심 기능
+- Quick Workspace
+- 오늘 실험 파일 일괄 업로드
+- DPV / SWV / EIS / CV / 이미지 / 기타 자료 자동 분류 저장
+- Quick experiment note
+- Experiment별 전체 파일 inventory
+- Inventory CSV 다운로드
+- Experiment 전체 ZIP export
 
-## 실행
-```bat
-python -m pip install -r requirements.txt
-streamlit run main.py
-```
+## 적용
+1. Streamlit 종료
+2. Patch ZIP 압축 해제
+3. `main.py`, `README.md`, `quick/` 폴더를 기존 프로젝트에 덮어쓰기
+4. `streamlit run main.py`
+5. `Quick Workspace` 탭 확인
 
 ## GitHub Desktop
-1. Summary: `Add Electronic Lab Notebook v1.1`
-2. Commit to main
-3. Push origin
-
-## Tag
-```bat
-git tag -a v1.1 -m "EC Research Studio v1.1"
-git push origin v1.1
-```
+- Summary: `Add Quick Workspace v1.2`
+- Commit to main
+- Push origin
