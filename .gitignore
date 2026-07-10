@@ -1,0 +1,12 @@
+﻿__pycache__/
+*.py[cod]
+
+projects/
+*.db
+
+.venv/
+venv/
+.env
+
+*.log
+.streamlit/secrets.toml
