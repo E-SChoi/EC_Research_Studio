@@ -1,0 +1,2 @@
+slope_per_pM,intercept,r2,p_value,std_err,sigma,sigma_source,LOD_pM,LOQ_pM,Detected_signal_column
+0.34971701243625525,447.49517564582567,0.08003561768050656,0.6446576091142638,0.6845418251829507,0.0,blank,0.0,0.0,DeltaRct_vs_zero_ohm

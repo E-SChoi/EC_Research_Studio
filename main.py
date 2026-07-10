@@ -8,13 +8,14 @@ from utils.json_io import load_json, save_json
 from core.dpv import parse_concentration as parse_dpv_concentration, run_dpv_analysis
 from core.swv import parse_concentration as parse_swv_concentration, run_swv_analysis
 from core.eis import parse_concentration as parse_eis_concentration, run_eis_analysis
+from core.cv import parse_scan_rate, run_cv_analysis
 from figures.builder import collect_figure_files, make_composite_figure, suggest_next_figure_name, PPTX_AVAILABLE
 from database.db import init_database, add_record, get_table, get_names, seed_default_database
 from statistics.replicate import run_statistics_analysis
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v0.8")
-st.caption("Project + Experiment + Database + Statistics + DPV/SWV/EIS + Figure Builder")
+st.title("EC Research Studio v0.9")
+st.caption("Project + Experiment + Database + Statistics + DPV/SWV/EIS/CV + Figure Builder")
 
 st.sidebar.header("Project")
 mode = st.sidebar.radio("Mode", ["New Project", "Open Project"])
@@ -36,8 +37,8 @@ project_path, project_info = open_project(selected_project)
 init_database(project_path)
 st.header(f"Project: {project_info['project_name']}")
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
-    "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "Statistics", "Figure Builder", "Project Info"
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
+    "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "Project Info"
 ])
 
 with tab1:
@@ -312,7 +313,74 @@ with tab7:
     analysis_tab("EIS", parse_eis_concentration, run_eis_analysis, "eis")
 
 
+
 with tab8:
+    st.subheader("CV Analysis")
+
+    experiments = project_info.get("experiments", [])
+    if not experiments:
+        st.info("먼저 Experiment를 만들어줘.")
+    else:
+        selected_exp_cv = st.selectbox("Experiment", experiments, key="cv_exp")
+        exp_path = Path(project_path) / "Experiments" / selected_exp_cv
+        raw_dir = exp_path / "RawData" / "CV"
+
+        if not raw_dir.exists():
+            st.warning("이 experiment에는 CV RawData 폴더가 없습니다. 먼저 Raw Data Import에서 CV 파일을 업로드해줘.")
+        else:
+            csv_files = sorted([p.name for p in raw_dir.glob("*.csv")])
+
+            if not csv_files:
+                st.warning("CV CSV 파일이 없습니다.")
+            else:
+                rows = []
+                for fname in csv_files:
+                    scan_rate = parse_scan_rate(fname)
+                    rows.append({
+                        "File": fname,
+                        "Label": fname.replace(".csv", ""),
+                        "ScanRate_mV_s": "" if scan_rate is None else scan_rate
+                    })
+
+                sample_df = pd.DataFrame(rows)
+                st.write("CV sample information")
+                edited_cv_df = st.data_editor(sample_df, use_container_width=True, num_rows="dynamic", key="cv_table")
+
+                if st.button("Run CV Analysis", type="primary", key="cv_run"):
+                    try:
+                        with st.spinner("Running CV analysis..."):
+                            result = run_cv_analysis(exp_path, edited_cv_df)
+
+                        exp_json = exp_path / "experiment.json"
+                        exp_info = load_json(exp_json)
+                        exp_info["results"].append({
+                            "analysis": "CV",
+                            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "result_dir": result["result_dir"],
+                            "figure_dir": result["figure_dir"],
+                            "report_dir": result["report_dir"]
+                        })
+                        save_json(exp_json, exp_info)
+
+                        st.success("CV analysis complete.")
+
+                        st.write("CV peak values")
+                        st.dataframe(result["cv_df"], use_container_width=True)
+
+                        if not result["scan_summary_df"].empty:
+                            st.write("Scan-rate summary")
+                            st.dataframe(result["scan_summary_df"], use_container_width=True)
+
+                        st.write("Output folders")
+                        st.code(result["result_dir"])
+                        st.code(result["figure_dir"])
+                        st.code(result["report_dir"])
+
+                    except Exception as e:
+                        st.error(f"CV analysis failed: {e}")
+
+
+with tab9:
     st.subheader("Statistics Engine")
 
     experiments = project_info.get("experiments", [])
@@ -387,7 +455,7 @@ with tab8:
                     st.error(f"Statistics analysis failed: {e}")
 
 
-with tab9:
+with tab10:
     st.subheader("Figure Builder")
 
     if PPTX_AVAILABLE:
@@ -456,7 +524,7 @@ with tab9:
                 except Exception as e:
                     st.error(f"Figure generation failed: {e}")
 
-with tab10:
+with tab11:
     st.subheader("Project JSON")
     st.json(project_info)
     st.write("Project folder:")

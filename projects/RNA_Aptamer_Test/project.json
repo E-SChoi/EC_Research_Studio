@@ -1,0 +1,9 @@
+{
+    "project_name": "RNA_Aptamer_Test",
+    "folder_name": "RNA_Aptamer_Test",
+    "created_at": "2026-07-09 18:45:24",
+    "version": "0.6",
+    "experiments": [
+        "Experiment_001"
+    ]
+}

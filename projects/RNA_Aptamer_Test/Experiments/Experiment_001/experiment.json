@@ -1,0 +1,66 @@
+{
+    "experiment_name": "Experiment_001",
+    "researcher": "",
+    "sensor": "Carbon SPE",
+    "recognition": "Aptamer",
+    "target": "RNA",
+    "temperature": "75 °C",
+    "reaction_time": "10 min",
+    "electrolyte": "5 mM Fe(CN)6 in 0.1 M KCl",
+    "technique": [
+        "DPV",
+        "SWV",
+        "EIS"
+    ],
+    "comment": "",
+    "raw_files": [
+        {
+            "file": "EIS_500pM.csv",
+            "data_type": "EIS",
+            "imported_at": "2026-07-09 18:47:06",
+            "relative_path": "RawData\\EIS\\EIS_500pM.csv"
+        },
+        {
+            "file": "EIS_250pM.csv",
+            "data_type": "EIS",
+            "imported_at": "2026-07-09 18:47:06",
+            "relative_path": "RawData\\EIS\\EIS_250pM.csv"
+        },
+        {
+            "file": "EIS_100pM.csv",
+            "data_type": "EIS",
+            "imported_at": "2026-07-09 18:47:06",
+            "relative_path": "RawData\\EIS\\EIS_100pM.csv"
+        },
+        {
+            "file": "EIS_50pM.csv",
+            "data_type": "EIS",
+            "imported_at": "2026-07-09 18:47:06",
+            "relative_path": "RawData\\EIS\\EIS_50pM.csv"
+        },
+        {
+            "file": "EIS_10pM.csv",
+            "data_type": "EIS",
+            "imported_at": "2026-07-09 18:47:06",
+            "relative_path": "RawData\\EIS\\EIS_10pM.csv"
+        },
+        {
+            "file": "EIS_zero.csv",
+            "data_type": "EIS",
+            "imported_at": "2026-07-09 18:47:06",
+            "relative_path": "RawData\\EIS\\EIS_zero.csv"
+        }
+    ],
+    "results": [
+        {
+            "analysis": "EIS",
+            "created_at": "2026-07-09 18:47:47",
+            "result_dir": "projects\\RNA_Aptamer_Test\\Experiments\\Experiment_001\\Results\\EIS",
+            "figure_dir": "projects\\RNA_Aptamer_Test\\Experiments\\Experiment_001\\Figures\\EIS",
+            "report_dir": "projects\\RNA_Aptamer_Test\\Experiments\\Experiment_001\\Reports\\EIS"
+        }
+    ],
+    "publication_figures": [],
+    "folder_name": "Experiment_001",
+    "created_at": "2026-07-09 18:45:58"
+}
