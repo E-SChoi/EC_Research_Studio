@@ -13,9 +13,10 @@ from figures.builder import collect_figure_files, make_composite_figure, suggest
 from database.db import init_database, add_record, get_table, get_names, seed_default_database
 from statistics.replicate import run_statistics_analysis
 from utils.backup import create_project_backup
+from eln.notebook import load_entries, add_entry, delete_entry, entries_dataframe, export_markdown
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v1.0")
+st.title("EC Research Studio v1.1")
 st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
@@ -38,8 +39,8 @@ project_path, project_info = open_project(selected_project)
 init_database(project_path)
 st.header(f"Project: {project_info['project_name']}")
 
-tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
-    "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "Project Info"
+tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
+    "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
 ])
 
 
@@ -585,7 +586,113 @@ with tab10:
                 except Exception as e:
                     st.error(f"Figure generation failed: {e}")
 
+
 with tab11:
+    st.subheader("Electronic Lab Notebook")
+    experiments = project_info.get("experiments", [])
+
+    if not experiments:
+        st.info("먼저 Experiment를 만들어줘.")
+    else:
+        selected_exp_eln = st.selectbox("Experiment", experiments, key="eln_exp")
+        exp_path = Path(project_path) / "Experiments" / selected_exp_eln
+        exp_json = exp_path / "experiment.json"
+        exp_info = load_json(exp_json) if exp_json.exists() else {}
+
+        form_tab, history_tab = st.tabs(["New entry", "Notebook history"])
+
+        with form_tab:
+            c1, c2 = st.columns(2)
+            with c1:
+                title = st.text_input("Entry title", value=f"{selected_exp_eln} experiment note", key="eln_title")
+                researcher = st.text_input("Researcher", value=exp_info.get("researcher",""), key="eln_researcher")
+                category = st.selectbox("Category", ["Experiment","Sample preparation","Surface modification","Measurement","Analysis","Troubleshooting","Other"], key="eln_category")
+                electrode = st.text_input("Electrode / Sensor", value=exp_info.get("sensor",""), key="eln_electrode")
+                recognition = st.text_input("Recognition element", value=exp_info.get("recognition",""), key="eln_recognition")
+            with c2:
+                target = st.text_input("Target / Sample", value=exp_info.get("target",""), key="eln_target")
+                surface = st.text_input("Surface modification", value="", key="eln_surface")
+                measurement = st.multiselect("Measurement", ["DPV","SWV","EIS","CV","Other"], default=exp_info.get("technique",[]), key="eln_measurement")
+                temperature = st.text_input("Temperature", value=exp_info.get("temperature",""), key="eln_temperature")
+                reaction_time = st.text_input("Reaction time", value=exp_info.get("reaction_time",""), key="eln_reaction_time")
+
+            protocol = st.text_area("Protocol / Procedure", height=150, key="eln_protocol")
+            observation = st.text_area("Observation", height=120, key="eln_observation")
+            result_summary = st.text_area("Result summary", height=120, key="eln_result")
+            next_action = st.text_area("Next action", height=90, key="eln_next")
+            files = st.file_uploader("Attach images or documents", type=["png","jpg","jpeg","webp","pdf","csv","xlsx","txt"], accept_multiple_files=True, key="eln_files")
+
+            if st.button("Save ELN Entry", type="primary", key="eln_save"):
+                item = add_entry(exp_path, {
+                    "title": title,
+                    "researcher": researcher,
+                    "category": category,
+                    "electrode": electrode,
+                    "surface_modification": surface,
+                    "recognition_element": recognition,
+                    "target": target,
+                    "measurement": ", ".join(measurement),
+                    "temperature": temperature,
+                    "reaction_time": reaction_time,
+                    "protocol": protocol,
+                    "observation": observation,
+                    "result_summary": result_summary,
+                    "next_action": next_action
+                }, uploaded_files=files)
+                st.success("ELN entry saved.")
+                st.code(item["entry_id"])
+
+        with history_tab:
+            entries = load_entries(exp_path)
+            if not entries:
+                st.info("저장된 ELN entry가 없습니다.")
+            else:
+                st.dataframe(entries_dataframe(entries), use_container_width=True)
+                selected_id = st.selectbox(
+                    "Open entry",
+                    [e["entry_id"] for e in reversed(entries)],
+                    format_func=lambda x: next(f"{e.get('created_at','')} | {e.get('title','')}" for e in entries if e.get("entry_id")==x),
+                    key="eln_open"
+                )
+                e = next(x for x in entries if x.get("entry_id")==selected_id)
+                st.write(f"### {e.get('title','')}")
+                st.write(f"**Date:** {e.get('created_at','')}")
+                st.write(f"**Researcher:** {e.get('researcher','')}")
+                st.write(f"**Category:** {e.get('category','')}")
+                st.write(f"**Electrode:** {e.get('electrode','')}")
+                st.write(f"**Surface modification:** {e.get('surface_modification','')}")
+                st.write(f"**Recognition element:** {e.get('recognition_element','')}")
+                st.write(f"**Target:** {e.get('target','')}")
+                st.write(f"**Measurement:** {e.get('measurement','')}")
+                st.write("#### Protocol / Procedure")
+                st.write(e.get("protocol",""))
+                st.write("#### Observation")
+                st.write(e.get("observation",""))
+                st.write("#### Result summary")
+                st.write(e.get("result_summary",""))
+                st.write("#### Next action")
+                st.write(e.get("next_action",""))
+
+                for a in e.get("attachments",[]):
+                    ap = exp_path / a["relative_path"]
+                    if ap.suffix.lower() in [".png",".jpg",".jpeg",".webp"]:
+                        st.image(str(ap), caption=a["name"], width=420)
+                    elif ap.exists():
+                        with open(ap,"rb") as f:
+                            st.download_button(f"Download {a['name']}", data=f.read(), file_name=a["name"], key=f"dl_{selected_id}_{a['name']}")
+
+                md = export_markdown(exp_path, entries)
+                with open(md,"rb") as f:
+                    st.download_button("Download ELN as Markdown", data=f.read(), file_name=f"{selected_exp_eln}_ELN.md", key="eln_md")
+
+                confirm = st.checkbox("I understand this will delete the selected entry", key="eln_confirm_delete")
+                if st.button("Delete selected entry", disabled=not confirm, key="eln_delete"):
+                    delete_entry(exp_path, selected_id)
+                    st.success("Entry deleted.")
+                    st.rerun()
+
+
+with tab12:
     st.subheader("Project JSON")
     st.json(project_info)
     st.write("Project folder:")

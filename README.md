@@ -1,14 +1,13 @@
-# EC Research Studio v1.0
+# EC Research Studio v1.1
 
-## 주요 기능
-- Dashboard
-- Project / Experiment 관리
-- DPV / SWV / EIS / CV 분석
-- Statistics Engine
-- Figure Builder
-- Research Database
-- 최근 Figure 미리보기
-- Project backup ZIP 생성
+## Electronic Lab Notebook
+- Experiment별 ELN entry 작성
+- Protocol / observation / result / next action 기록
+- 이미지, PDF, CSV, Excel, TXT 첨부
+- Notebook history 조회
+- Markdown export
+- Entry 삭제
+- 기존 실험 정보 자동 불러오기
 
 ## 실행
 ```bat
@@ -16,11 +15,13 @@ python -m pip install -r requirements.txt
 streamlit run main.py
 ```
 
-## Git 반영
+## GitHub Desktop
+1. Summary: `Add Electronic Lab Notebook v1.1`
+2. Commit to main
+3. Push origin
+
+## Tag
 ```bat
-git add .
-git commit -m "Release EC Research Studio v1.0"
-git tag -a v1.0 -m "EC Research Studio v1.0"
-git push
-git push origin v1.0
+git tag -a v1.1 -m "EC Research Studio v1.1"
+git push origin v1.1
 ```
