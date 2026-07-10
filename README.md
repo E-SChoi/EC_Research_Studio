@@ -1,25 +1,26 @@
-# EC Research Studio v0.9
+# EC Research Studio v1.0
 
-## 새 기능
-- CV Analysis Engine 추가
-- CV raw overlay
-- Oxidation peak / reduction peak 자동 검출
-- Epa / Epc / ΔEp / E0' / Ipa / Ipc / peak ratio 계산
-- Peak marker figure 생성
-- Scan-rate 분석: Ipa/Ipc vs sqrt(scan rate)
-- 기존 DPV / SWV / EIS / Statistics / Figure Builder / Database 유지
+## 주요 기능
+- Dashboard
+- Project / Experiment 관리
+- DPV / SWV / EIS / CV 분석
+- Statistics Engine
+- Figure Builder
+- Research Database
+- 최근 Figure 미리보기
+- Project backup ZIP 생성
 
-## 실행 방법
+## 실행
 ```bat
 python -m pip install -r requirements.txt
 streamlit run main.py
 ```
 
-## GitHub 업데이트 권장 명령
+## Git 반영
 ```bat
 git add .
-git commit -m "Add CV engine v0.9"
-git tag v0.9
+git commit -m "Release EC Research Studio v1.0"
+git tag -a v1.0 -m "EC Research Studio v1.0"
 git push
-git push origin v0.9
+git push origin v1.0
 ```

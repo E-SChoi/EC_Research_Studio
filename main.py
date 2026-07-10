@@ -12,10 +12,11 @@ from core.cv import parse_scan_rate, run_cv_analysis
 from figures.builder import collect_figure_files, make_composite_figure, suggest_next_figure_name, PPTX_AVAILABLE
 from database.db import init_database, add_record, get_table, get_names, seed_default_database
 from statistics.replicate import run_statistics_analysis
+from utils.backup import create_project_backup
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v0.9")
-st.caption("Project + Experiment + Database + Statistics + DPV/SWV/EIS/CV + Figure Builder")
+st.title("EC Research Studio v1.0")
+st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
 mode = st.sidebar.radio("Mode", ["New Project", "Open Project"])
@@ -37,9 +38,69 @@ project_path, project_info = open_project(selected_project)
 init_database(project_path)
 st.header(f"Project: {project_info['project_name']}")
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
-    "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "Project Info"
+tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
+    "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "Project Info"
 ])
+
+
+with tab0:
+    st.subheader("Project Dashboard")
+
+    experiments = project_info.get("experiments", [])
+    total_experiments = len(experiments)
+
+    analysis_counts = {"DPV": 0, "SWV": 0, "EIS": 0, "CV": 0}
+    figure_count = 0
+
+    for exp_name in experiments:
+        exp_path = Path(project_path) / "Experiments" / exp_name
+        exp_json = exp_path / "experiment.json"
+
+        if exp_json.exists():
+            exp_info = load_json(exp_json)
+            for item in exp_info.get("results", []):
+                method = item.get("analysis")
+                if method in analysis_counts:
+                    analysis_counts[method] += 1
+
+        pub_dir = exp_path / "PublicationFigures"
+        if pub_dir.exists():
+            figure_count += len([p for p in pub_dir.iterdir() if p.is_dir()])
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Experiments", total_experiments)
+    c2.metric("Analyses", sum(analysis_counts.values()))
+    c3.metric("Publication Figures", figure_count)
+    c4.metric("Project Version", "v1.0")
+
+    st.write("### Analysis summary")
+    st.dataframe(
+        pd.DataFrame([{"Method": k, "Completed analyses": v} for k, v in analysis_counts.items()]),
+        use_container_width=True
+    )
+
+    st.write("### Latest generated figures")
+    recent_pngs = []
+    for exp_name in experiments:
+        fig_root = Path(project_path) / "Experiments" / exp_name / "Figures"
+        if fig_root.exists():
+            recent_pngs.extend(fig_root.rglob("*.png"))
+
+    recent_pngs = sorted(recent_pngs, key=lambda p: p.stat().st_mtime, reverse=True)[:6]
+
+    if recent_pngs:
+        cols = st.columns(3)
+        for i, p in enumerate(recent_pngs):
+            with cols[i % 3]:
+                st.image(str(p), caption=p.name, use_container_width=True)
+    else:
+        st.info("아직 생성된 figure가 없습니다.")
+
+    st.write("### Project backup")
+    if st.button("Create Project Backup", key="backup_project"):
+        backup_path = create_project_backup(project_path)
+        st.success("Project backup created.")
+        st.code(str(backup_path))
 
 with tab1:
     st.subheader("New Experiment")
