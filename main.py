@@ -23,6 +23,14 @@ from quick.workspace import (
     export_experiment_zip,
 )
 
+from plugins.auto_analyzer import (
+    available_methods,
+    build_method_table,
+    run_selected_methods,
+    summary_dataframe,
+    save_auto_analysis_log,
+)
+
 from workspace.results import (
     collect_result_files,
     read_result_table,
@@ -32,7 +40,7 @@ from workspace.results import (
 )
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v1.4.1 Stable")
+st.title("EC Research Studio v1.5.1 Native Raw Import")
 st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
@@ -55,8 +63,8 @@ project_path, project_info = open_project(selected_project)
 init_database(project_path)
 st.header(f"Project: {project_info['project_name']}")
 
-tabq, tabr, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
-    "Today", "Results", "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
+tabq, taba, tabr, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
+    "Today", "Auto Analyze", "Results", "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
 ])
 
 
@@ -109,9 +117,9 @@ with tabq:
             )
 
             type_map = {
-                "DPV": ["csv", "txt", "xlsx"],
-                "SWV": ["csv", "txt", "xlsx"],
-                "EIS": ["csv", "txt", "xlsx"],
+                "DPV": ["mtd", "csv", "txt", "xlsx"],
+                "SWV": ["mts", "csv", "txt", "xlsx"],
+                "EIS": ["mteisp", "csv", "txt", "xlsx"],
                 "CV": ["csv", "txt", "xlsx"],
                 "Images": ["png", "jpg", "jpeg", "webp", "tif", "tiff"],
                 "Other": ["pdf", "docx", "pptx", "txt", "csv", "xlsx", "zip"]
@@ -198,6 +206,173 @@ with tabq:
                         key="today_download_zip"
                     )
 
+
+
+
+with taba:
+    st.subheader("Auto Analyzer")
+    st.caption("Instrument raw files (.mtd/.mts/.mteisp) and CSV files are analyzed directly. When multiple curves are stored, the last measurement curve is used.")
+
+    experiments = project_info.get("experiments", [])
+
+    if not experiments:
+        st.info("먼저 Experiment를 만들어줘.")
+    else:
+        selected_exp_auto = st.selectbox(
+            "Experiment",
+            experiments,
+            key="auto_exp",
+        )
+        exp_path = Path(project_path) / "Experiments" / selected_exp_auto
+
+        detected_methods = available_methods(exp_path)
+
+        if not detected_methods:
+            st.warning("분석 가능한 CSV 파일이 없습니다. Today 또는 Raw Data Import에서 파일을 먼저 저장해줘.")
+        else:
+            st.write("### Detected raw data")
+            detected_rows = []
+
+            for method in detected_methods:
+                table = build_method_table(exp_path, method)
+                detected_rows.append({
+                    "Method": method,
+                    "CSV files": len(table),
+                })
+
+            st.dataframe(
+                pd.DataFrame(detected_rows),
+                use_container_width=True,
+            )
+
+            selected_methods = st.multiselect(
+                "Methods to analyze",
+                ["DPV", "SWV", "EIS", "CV"],
+                default=detected_methods,
+                key="auto_methods",
+            )
+
+            use_abs_fit_auto = st.checkbox(
+                "Use absolute value for concentration fitting",
+                value=True,
+                key="auto_abs_fit",
+            )
+
+            with st.expander("DPV peak and baseline settings", expanded=("DPV" in selected_methods)):
+                dpv_mode_label = st.selectbox(
+                    "DPV baseline mode",
+                    [
+                        "Shape-based: local minimum before main peak",
+                        "Legacy: fixed potential region ≤ 0 V",
+                    ],
+                    index=0,
+                    key="auto_dpv_mode",
+                )
+
+                c1, c2, c3 = st.columns(3)
+                auto_peak_min = c1.number_input(
+                    "Peak search start (V)",
+                    value=0.30,
+                    step=0.01,
+                    format="%.3f",
+                    key="auto_peak_min",
+                )
+                auto_peak_max = c2.number_input(
+                    "Peak search end (V)",
+                    value=0.70,
+                    step=0.01,
+                    format="%.3f",
+                    key="auto_peak_max",
+                )
+                auto_baseline_min = c3.number_input(
+                    "Minimum search start (V)",
+                    value=0.05,
+                    step=0.01,
+                    format="%.3f",
+                    key="auto_baseline_min",
+                )
+                auto_smoothing = st.number_input(
+                    "Detection smoothing window",
+                    min_value=5,
+                    max_value=101,
+                    value=11,
+                    step=2,
+                    key="auto_smoothing",
+                )
+
+            if st.button(
+                "Run selected analyses",
+                type="primary",
+                key="auto_run",
+            ):
+                if not selected_methods:
+                    st.warning("분석 방법을 하나 이상 선택해줘.")
+                else:
+                    dpv_mode = (
+                        "preceding_local_minimum"
+                        if dpv_mode_label.startswith("Shape-based")
+                        else "fixed_region"
+                    )
+
+                    with st.spinner("Running selected analyses..."):
+                        completed, failed = run_selected_methods(
+                            exp_path=exp_path,
+                            methods=selected_methods,
+                            use_abs_fit=use_abs_fit_auto,
+                            dpv_baseline_mode=dpv_mode,
+                            dpv_peak_search_min_v=auto_peak_min,
+                            dpv_peak_search_max_v=auto_peak_max,
+                            dpv_baseline_search_min_v=auto_baseline_min,
+                            dpv_smoothing_window=auto_smoothing,
+                        )
+
+                    summary_df = summary_dataframe(completed, failed)
+                    csv_log, txt_log = save_auto_analysis_log(
+                        exp_path,
+                        summary_df,
+                    )
+
+                    exp_json = exp_path / "experiment.json"
+                    if exp_json.exists():
+                        exp_info = load_json(exp_json)
+                        exp_info.setdefault("results", [])
+
+                        for item in completed:
+                            exp_info["results"].append({
+                                "analysis": item["Method"],
+                                "created_at": item["Completed at"],
+                                "result_dir": item["Result directory"],
+                                "figure_dir": item["Figure directory"],
+                                "report_dir": item["Report directory"],
+                                "source": "Auto Analyzer",
+                            })
+
+                        save_json(exp_json, exp_info)
+
+                    st.write("### Auto-analysis summary")
+                    st.dataframe(summary_df, use_container_width=True)
+
+                    if completed:
+                        st.success(f"{len(completed)} analysis method(s) completed.")
+
+                    if failed:
+                        st.warning(f"{len(failed)} method(s) failed or were skipped. Check the Message column.")
+
+                    st.write("### Log files")
+                    st.code(str(csv_log))
+                    st.code(str(txt_log))
+
+                    recent = recent_figures(exp_path, limit=8)
+                    if recent:
+                        st.write("### Newly available figures")
+                        cols = st.columns(4)
+                        for i, fig_path in enumerate(recent):
+                            with cols[i % 4]:
+                                st.image(
+                                    str(fig_path),
+                                    caption=fig_path.name,
+                                    use_container_width=True,
+                                )
 
 
 with tabr:
@@ -500,14 +675,24 @@ with tab3:
 
 
 with tab4:
-    st.subheader("Import raw CSV files into experiment")
+    st.subheader("Import instrument raw files into experiment")
     experiments = project_info.get("experiments", [])
     if not experiments:
         st.info("먼저 Experiment를 만들어줘.")
     else:
         selected_exp_import = st.selectbox("Experiment", experiments, key="import_exp")
         data_type = st.selectbox("Data type", ["DPV", "SWV", "EIS", "CV"])
-        uploaded_files = st.file_uploader("Upload raw CSV files", type=["csv"], accept_multiple_files=True)
+        import_type_map = {
+            "DPV": ["mtd", "csv"],
+            "SWV": ["mts", "csv"],
+            "EIS": ["mteisp", "csv"],
+            "CV": ["csv"],
+        }
+        uploaded_files = st.file_uploader(
+            "Upload instrument raw files or CSV files",
+            type=import_type_map[data_type],
+            accept_multiple_files=True,
+        )
         if st.button("Import files"):
             exp_path = Path(project_path) / "Experiments" / selected_exp_import
             raw_dir = exp_path / "RawData" / data_type

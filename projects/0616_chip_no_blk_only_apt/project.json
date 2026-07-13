@@ -1,0 +1,9 @@
+{
+    "project_name": "0616 chip_no blk_only apt.",
+    "folder_name": "0616_chip_no_blk_only_apt.",
+    "created_at": "2026-07-13 19:51:56",
+    "version": "0.6",
+    "experiments": [
+        "Experiment_001_Short_Target"
+    ]
+}

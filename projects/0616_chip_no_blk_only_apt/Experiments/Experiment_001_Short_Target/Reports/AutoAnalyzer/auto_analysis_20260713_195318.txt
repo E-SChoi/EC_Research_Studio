@@ -1,0 +1,2 @@
+Method    Status  Raw files Message                                                                       Result directory                                                                       Figure directory
+   DPV Completed          6         projects\0616_chip_no_blk_only_apt\Experiments\Experiment_001_Short_Target\Results\DPV projects\0616_chip_no_blk_only_apt\Experiments\Experiment_001_Short_Target\Figures\DPV

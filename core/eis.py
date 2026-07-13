@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
+from rawio.instrument_xml import read_last_eis_nyquist_curve
 
 def parse_concentration(filename):
     name = filename.lower()
@@ -23,10 +24,16 @@ def fig_to_file(fig, path):
 
 def load_eis_file(path):
     path = Path(path)
+
+    if path.suffix.lower() == ".mteisp":
+        native = read_last_eis_nyquist_curve(path)
+        return native["z_real"], native["z_imag"], native["frequency"]
+
     try:
         df = pd.read_csv(path)
     except Exception:
         df = pd.read_csv(path, header=None)
+
     if df.shape[1] == 1:
         raw = pd.read_csv(path, header=None, dtype=str)
         rows = []
@@ -35,22 +42,33 @@ def load_eis_file(path):
                 continue
             nums = []
             for p in [x.replace('"', "").strip() for x in line.split(";")]:
-                try: nums.append(float(p))
-                except ValueError: pass
-            if len(nums) >= 3: rows.append(nums[:3])
+                try:
+                    nums.append(float(p))
+                except ValueError:
+                    pass
+            if len(nums) >= 3:
+                rows.append(nums[:3])
         if rows:
             arr = np.array(rows, dtype=float)
-            return arr[:,0], arr[:,1], arr[:,2]
+            return arr[:, 0], arr[:, 1], arr[:, 2]
+
     df_num = df.apply(pd.to_numeric, errors="coerce").dropna(how="all")
     if df_num.shape[1] < 3 or df_num.dropna().shape[0] < 5:
         df = pd.read_csv(path, skiprows=2)
         df_num = df.apply(pd.to_numeric, errors="coerce").dropna(how="all")
+
     if df_num.shape[1] < 3:
         raise ValueError(f"EIS file needs at least 3 numeric columns: {path}")
+
     df3 = df_num.iloc[:, :3].copy()
     df3.columns = ["Z", "Zi", "Freq"]
     df3 = df3.apply(pd.to_numeric, errors="coerce").dropna()
-    return df3["Z"].to_numpy(), df3["Zi"].to_numpy(), df3["Freq"].to_numpy()
+
+    return (
+        df3["Z"].to_numpy(),
+        df3["Zi"].to_numpy(),
+        df3["Freq"].to_numpy(),
+    )
 
 def fit_circle_algebraic(x, y):
     x = np.asarray(x, dtype=float); y = np.asarray(y, dtype=float)

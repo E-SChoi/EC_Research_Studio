@@ -107,7 +107,7 @@ def get_analysis_status(exp_path):
         raw_dir = exp_path / "RawData" / method
         result_dir = exp_path / "Results" / method
 
-        raw_count = len(list(raw_dir.glob("*"))) if raw_dir.exists() else 0
+        raw_count = len([p for p in raw_dir.iterdir() if p.is_file()]) if raw_dir.exists() else 0
         result_count = len(list(result_dir.rglob("*"))) if result_dir.exists() else 0
 
         if result_count > 0:

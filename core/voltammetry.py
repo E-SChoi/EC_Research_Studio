@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
+from rawio.instrument_xml import read_last_voltammetry_curve
 
 def parse_concentration(filename):
     name = filename.lower()
@@ -20,6 +21,15 @@ def parse_concentration(filename):
 
 def load_voltammetry_file(path):
     path = Path(path)
+
+    if path.suffix.lower() in [".mtd", ".mts"]:
+        expected = "DPV" if path.suffix.lower() == ".mtd" else "SWV"
+        native = read_last_voltammetry_curve(
+            path,
+            expected_technique=expected,
+        )
+        return native["potential"], native["current"]
+
     raw = pd.read_csv(path, header=None, dtype=str)
     potential, current = [], []
     for line in raw.iloc[:, 0]:
@@ -35,6 +45,7 @@ def load_voltammetry_file(path):
             continue
     if len(potential) > 0:
         return np.array(potential), np.array(current)
+
     df = pd.read_csv(path)
     df = df.apply(pd.to_numeric, errors="coerce").dropna()
     if df.shape[1] < 2:

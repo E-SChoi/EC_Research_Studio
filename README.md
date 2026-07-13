@@ -1,25 +1,47 @@
-# EC Research Studio v1.4.1 Stable
+# EC Research Studio v1.5.1 Native Raw Import
 
-## DPV local-minimum baseline update
-- Main DPV peak is detected inside a user-defined potential window.
-- The baseline point is the local minimum located before that peak.
-- Each curve is vertically shifted so the detected local minimum becomes 0 µA.
-- ΔPeak is calculated as `peak current − preceding local-minimum current`.
-- Smoothing is used only to detect positions; exported and plotted current values remain raw.
-- Detected baseline and peak potentials are saved in CSV/Excel.
-- A marker figure is generated: `2b_detected_minimum_and_peak.png`.
+## New native instrument formats
+- DPV: `.mtd`
+- SWV: `.mts`
+- EIS: `.mteisp`
+- Existing CSV files remain supported.
 
-## Recommended settings for the supplied DPV shape
-- Peak search: 0.30–0.70 V
-- Minimum search start: 0.05 V
-- Smoothing window: 11 points
+## Curve selection rule
+- DPV/SWV: the last stored curve in the file is used.
+- Differential current is reconstructed as `i1 - i2`, matching the instrument CSV export.
+- EIS: the last stored `NYQUIST` curve is used.
+- EIS fields are read as:
+  - `potential` → Z′
+  - `i1` → −Z″
+  - `time` → frequency
 
-## Apply
-1. Stop Streamlit.
-2. Extract patch ZIP.
-3. Overwrite `main.py`, `README.md`, `core/dpv.py`, and `core/voltammetry.py`.
-4. Run `streamlit run main.py`.
-5. In DPV Analysis, keep `Shape-based: local minimum before main peak`.
+## Workflow
+1. Upload the original instrument file without CSV conversion.
+2. Select the correct category: DPV, SWV, or EIS.
+3. Save it to the Experiment.
+4. Run the individual analysis tab or Auto Analyze.
+5. The original raw file remains unchanged.
+
+## Compatibility
+- CSV workflows still work.
+- Existing Projects and Experiments remain compatible.
+- DPV shape-based local-minimum baseline settings remain available.
+
+## Apply patch
+Overwrite:
+- `main.py`
+- `README.md`
+- `core/voltammetry.py`
+- `core/eis.py`
+- `plugins/auto_analyzer.py`
+- `quick/workspace.py`
+- `rawio/__init__.py`
+- `rawio/instrument_xml.py`
+
+Then run:
+```bat
+streamlit run main.py
+```
 
 ## GitHub Desktop
-Summary: `Update DPV local-minimum baseline v1.4.1`
+Summary: `Add native instrument raw import v1.5.1`
