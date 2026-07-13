@@ -32,7 +32,7 @@ from workspace.results import (
 )
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v1.4 Stable")
+st.title("EC Research Studio v1.4.1 Stable")
 st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
@@ -551,10 +551,68 @@ def analysis_tab(method, parse_func, run_func, key_prefix):
         rows.append({"File": fname, "Label": label, "Concentration_pM": 0.0 if conc_pm is None else conc_pm})
     edited_df = st.data_editor(pd.DataFrame(rows), use_container_width=True, num_rows="dynamic", key=f"{key_prefix}_table")
     use_abs_fit = st.checkbox("Use absolute value for fitting", value=True, key=f"{key_prefix}_abs")
+
+    run_kwargs = {"use_abs_fit": use_abs_fit}
+
+    if method == "DPV":
+        st.write("#### DPV peak and baseline detection")
+        baseline_mode_label = st.selectbox(
+            "Baseline detection",
+            [
+                "Shape-based: local minimum before main peak",
+                "Legacy: fixed potential region ≤ 0 V",
+            ],
+            index=0,
+            key="dpv_baseline_mode",
+        )
+
+        if baseline_mode_label.startswith("Shape-based"):
+            c1, c2, c3 = st.columns(3)
+            peak_search_min_v = c1.number_input(
+                "Peak search start (V)",
+                value=0.30,
+                step=0.01,
+                format="%.3f",
+                key="dpv_peak_search_min",
+            )
+            peak_search_max_v = c2.number_input(
+                "Peak search end (V)",
+                value=0.70,
+                step=0.01,
+                format="%.3f",
+                key="dpv_peak_search_max",
+            )
+            baseline_search_min_v = c3.number_input(
+                "Minimum search start (V)",
+                value=0.05,
+                step=0.01,
+                format="%.3f",
+                key="dpv_baseline_search_min",
+            )
+
+            smoothing_window = st.number_input(
+                "Detection smoothing window (odd points; raw current is not smoothed)",
+                min_value=5,
+                max_value=101,
+                value=11,
+                step=2,
+                key="dpv_smoothing_window",
+            )
+
+            run_kwargs.update({
+                "baseline_mode": "preceding_local_minimum",
+                "peak_search_min_v": float(peak_search_min_v),
+                "peak_search_max_v": float(peak_search_max_v),
+                "baseline_search_min_v": float(baseline_search_min_v),
+                "smoothing_window": int(smoothing_window),
+            })
+        else:
+            run_kwargs["baseline_mode"] = "fixed_region"
+
     if st.button(f"Run {method} Analysis", type="primary", key=f"{key_prefix}_run"):
         try:
             with st.spinner(f"Running {method} analysis..."):
-                result = run_func(exp_path, edited_df, use_abs_fit=use_abs_fit)
+                result = run_func(exp_path, edited_df, **run_kwargs)
             exp_json = exp_path / "experiment.json"
             exp_info = load_json(exp_json)
             exp_info["results"].append({

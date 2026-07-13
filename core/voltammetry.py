@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
+from scipy.signal import savgol_filter
 
 def parse_concentration(filename):
     name = filename.lower()
@@ -57,7 +58,101 @@ def fig_to_file(fig, path):
     fig.savefig(path, dpi=300, bbox_inches="tight")
     fig.savefig(path.with_suffix(".svg"), bbox_inches="tight")
 
-def run_voltammetry_analysis(exp_path, sample_table, method="DPV", use_abs_fit=True):
+
+def _valid_savgol_window(n_points, requested=11):
+    """Return an odd Savitzky-Golay window valid for the current data length."""
+    if n_points < 5:
+        return None
+
+    window = min(int(requested), n_points if n_points % 2 == 1 else n_points - 1)
+    if window < 5:
+        return None
+    if window % 2 == 0:
+        window -= 1
+    return window
+
+
+def detect_preceding_minimum_and_peak(
+    potential,
+    current,
+    peak_search_min_v=0.30,
+    peak_search_max_v=0.70,
+    baseline_search_min_v=0.05,
+    smoothing_window=11,
+):
+    """
+    Detect the main positive DPV peak and the local minimum immediately before it.
+
+    Detection is performed on a lightly smoothed copy only. Reported current values
+    are always taken from the original raw data.
+    """
+    potential = np.asarray(potential, dtype=float)
+    current = np.asarray(current, dtype=float)
+
+    if len(potential) != len(current) or len(potential) < 5:
+        raise ValueError("Insufficient DPV points for shape-based baseline detection.")
+
+    order = np.argsort(potential)
+    potential = potential[order]
+    current = current[order]
+
+    window = _valid_savgol_window(len(current), smoothing_window)
+    if window is None:
+        smooth = current.copy()
+    else:
+        smooth = savgol_filter(current, window_length=window, polyorder=2)
+
+    peak_mask = (potential >= float(peak_search_min_v)) & (potential <= float(peak_search_max_v))
+    if not peak_mask.any():
+        raise ValueError(
+            f"No points in peak search range {peak_search_min_v:.3f}–{peak_search_max_v:.3f} V."
+        )
+
+    peak_candidates = np.where(peak_mask)[0]
+    peak_idx = int(peak_candidates[np.argmax(smooth[peak_mask])])
+
+    baseline_mask = (
+        (potential >= float(baseline_search_min_v))
+        & (np.arange(len(potential)) < peak_idx)
+    )
+    if not baseline_mask.any():
+        raise ValueError(
+            f"No points available before the detected peak for baseline search "
+            f"(start {baseline_search_min_v:.3f} V)."
+        )
+
+    baseline_candidates = np.where(baseline_mask)[0]
+    baseline_idx = int(baseline_candidates[np.argmin(smooth[baseline_mask])])
+
+    if baseline_idx >= peak_idx:
+        raise ValueError("Detected baseline minimum is not located before the peak.")
+
+    return {
+        "potential_sorted": potential,
+        "current_sorted": current,
+        "smooth_current": smooth,
+        "baseline_idx": baseline_idx,
+        "peak_idx": peak_idx,
+        "baseline_potential_v": float(potential[baseline_idx]),
+        "baseline_current_uA": float(current[baseline_idx]),
+        "peak_potential_v": float(potential[peak_idx]),
+        "peak_current_uA": float(current[peak_idx]),
+        "delta_peak_uA": float(current[peak_idx] - current[baseline_idx]),
+    }
+
+
+def run_voltammetry_analysis(
+    exp_path,
+    sample_table,
+    method="DPV",
+    use_abs_fit=True,
+    baseline_mode="fixed_region",
+    peak_search_min_v=0.30,
+    peak_search_max_v=0.70,
+    baseline_search_min_v=0.05,
+    smoothing_window=11,
+):
+
     exp_path = Path(exp_path)
     method = method.upper()
     raw_dir = exp_path / "RawData" / method
@@ -94,31 +189,106 @@ def run_voltammetry_analysis(exp_path, sample_table, method="DPV", use_abs_fit=T
     fig_to_file(fig, figure_dir / "1_raw_overlay.png")
     plt.close(fig)
 
-    baseline_cols, baseline_info = {}, []
+    baseline_cols, baseline_info, detection_rows = {}, [], []
     fig, ax = plt.subplots()
+    marker_fig, marker_ax = plt.subplots()
+
     for item in data.values():
         potential, current = item["potential"], item["current"]
-        mask = potential <= 0
-        if not mask.any():
-            raise ValueError(f"{item['label']}: No potential region <= 0 V.")
-        baseline = np.min(current[mask])
+
+        if baseline_mode == "preceding_local_minimum":
+            detected = detect_preceding_minimum_and_peak(
+                potential,
+                current,
+                peak_search_min_v=peak_search_min_v,
+                peak_search_max_v=peak_search_max_v,
+                baseline_search_min_v=baseline_search_min_v,
+                smoothing_window=smoothing_window,
+            )
+            potential = detected["potential_sorted"]
+            current = detected["current_sorted"]
+            baseline = detected["baseline_current_uA"]
+            baseline_potential = detected["baseline_potential_v"]
+            peak_current = detected["peak_current_uA"]
+            peak_potential = detected["peak_potential_v"]
+            delta_peak = detected["delta_peak_uA"]
+        else:
+            mask = potential <= 0
+            if not mask.any():
+                raise ValueError(f"{item['label']}: No potential region <= 0 V.")
+            baseline = float(np.min(current[mask]))
+            baseline_idx = int(np.where(mask)[0][np.argmin(current[mask])])
+            baseline_potential = float(potential[baseline_idx])
+            peak_idx = int(np.argmax(current))
+            peak_current = float(current[peak_idx])
+            peak_potential = float(potential[peak_idx])
+            delta_peak = float(np.max(current) - np.min(current))
+
         shifted = current - baseline
         ax.plot(potential, shifted, label=item["label"])
+
+        marker_ax.plot(potential, current, label=item["label"])
+        marker_ax.scatter(baseline_potential, baseline, marker="v", s=65)
+        marker_ax.scatter(peak_potential, peak_current, marker="^", s=65)
+        marker_ax.annotate(
+            f"min {baseline_potential:.3f} V",
+            (baseline_potential, baseline),
+            textcoords="offset points",
+            xytext=(4, -15),
+            fontsize=7,
+        )
+        marker_ax.annotate(
+            f"peak {peak_potential:.3f} V",
+            (peak_potential, peak_current),
+            textcoords="offset points",
+            xytext=(4, 5),
+            fontsize=7,
+        )
+
         safe = item["label"].replace(" ", "_")
         baseline_cols[f"{safe}_Potential_V"] = pd.Series(potential)
         baseline_cols[f"{safe}_Current_raw_uA"] = pd.Series(current)
         baseline_cols[f"{safe}_Current_shift_uA"] = pd.Series(shifted)
+
         baseline_info.append({
-            "File": item["file"], "Label": item["label"],
-            "Concentration_pM": item["conc_pM"], "Concentration_M": item["conc_M"],
-            "Baseline_min_current_at_V<=0_uA": baseline
+            "File": item["file"],
+            "Label": item["label"],
+            "Concentration_pM": item["conc_pM"],
+            "Concentration_M": item["conc_M"],
+            "Baseline_mode": baseline_mode,
+            "Baseline_potential_V": baseline_potential,
+            "Baseline_current_uA": baseline,
+            "Peak_potential_V": peak_potential,
+            "Peak_current_uA": peak_current,
+            "DeltaPeak_peak_minus_preceding_min_uA": delta_peak,
         })
+
+        detection_rows.append({
+            "File": item["file"],
+            "Label": item["label"],
+            "Concentration_pM": item["conc_pM"],
+            "Concentration_M": item["conc_M"],
+            "Baseline_potential_V": baseline_potential,
+            "Baseline_current_uA": baseline,
+            "Peak_potential_V": peak_potential,
+            "Peak_current_uA": peak_current,
+            "DeltaPeak_max_minus_min_uA": delta_peak,
+        })
+
+    ax.axhline(0, linewidth=0.7)
     ax.set_xlabel("Potential (V)")
-    ax.set_ylabel("Current (µA, baseline-shifted)")
-    ax.set_title(f"{method} baseline-shift overlay")
+    ax.set_ylabel("Current (µA, local-minimum shifted)")
+    ax.set_title(f"{method} local-minimum baseline-shift overlay" if baseline_mode == "preceding_local_minimum" else f"{method} baseline-shift overlay")
     ax.legend()
     fig_to_file(fig, figure_dir / "2_baseline_shift_overlay.png")
     plt.close(fig)
+
+    marker_ax.set_xlabel("Potential (V)")
+    marker_ax.set_ylabel("Current (µA)")
+    marker_ax.set_title(f"{method} detected preceding minima and peaks")
+    marker_ax.legend()
+    fig_to_file(marker_fig, figure_dir / "2b_detected_minimum_and_peak.png")
+    plt.close(marker_fig)
 
     baseline_df = pd.DataFrame(baseline_cols)
     baseline_info_df = pd.DataFrame(baseline_info)
@@ -128,20 +298,19 @@ def run_voltammetry_analysis(exp_path, sample_table, method="DPV", use_abs_fit=T
     baseline_df.to_csv(result_dir / "raw_and_baseline_data.csv", index=False)
     baseline_info_df.to_csv(result_dir / "baseline_info.csv", index=False)
 
-    peak_rows = []
-    for item in data.values():
-        delta_peak = float(np.max(item["current"]) - np.min(item["current"]))
-        peak_rows.append({
-            "File": item["file"], "Label": item["label"],
-            "Concentration_pM": item["conc_pM"], "Concentration_M": item["conc_M"],
-            "DeltaPeak_max_minus_min_uA": delta_peak
-        })
-    peak_df = pd.DataFrame(peak_rows).sort_values("Concentration_pM")
+    peak_df = pd.DataFrame(detection_rows).sort_values("Concentration_pM")
     if (peak_df["Concentration_pM"] == 0).sum() == 0:
         raise RuntimeError("A zero sample with Concentration_pM = 0 is required.")
-    zero_delta = peak_df.loc[peak_df["Concentration_pM"] == 0, "DeltaPeak_max_minus_min_uA"].iloc[0]
-    peak_df["DeltaDeltaPeak_vs_zero_uA"] = peak_df["DeltaPeak_max_minus_min_uA"] - zero_delta
-    peak_df["Abs_DeltaDeltaPeak_vs_zero_uA"] = np.abs(peak_df["DeltaDeltaPeak_vs_zero_uA"])
+    zero_delta = peak_df.loc[
+        peak_df["Concentration_pM"] == 0,
+        "DeltaPeak_max_minus_min_uA"
+    ].iloc[0]
+    peak_df["DeltaDeltaPeak_vs_zero_uA"] = (
+        peak_df["DeltaPeak_max_minus_min_uA"] - zero_delta
+    )
+    peak_df["Abs_DeltaDeltaPeak_vs_zero_uA"] = np.abs(
+        peak_df["DeltaDeltaPeak_vs_zero_uA"]
+    )
     peak_df.to_csv(result_dir / "peak_values.csv", index=False)
     with pd.ExcelWriter(result_dir / "peak_values.xlsx", engine="openpyxl") as writer:
         peak_df.to_excel(writer, sheet_name="Peak_values", index=False)
@@ -158,7 +327,7 @@ def run_voltammetry_analysis(exp_path, sample_table, method="DPV", use_abs_fit=T
     fig, ax = plt.subplots(figsize=(8, 4))
     ax.bar(peak_df["Label"], peak_df["DeltaPeak_max_minus_min_uA"])
     ax.set_xlabel("Concentration")
-    ax.set_ylabel("ΔPeak = max − min (µA)")
+    ax.set_ylabel("ΔPeak = peak − preceding minimum (µA)" if baseline_mode == "preceding_local_minimum" else "ΔPeak = max − min (µA)")
     ax.set_title(f"{method} ΔPeak by concentration")
     fig.tight_layout()
     fig_to_file(fig, figure_dir / "4_delta_peak_bar.png")
@@ -213,6 +382,6 @@ def run_voltammetry_analysis(exp_path, sample_table, method="DPV", use_abs_fit=T
     fit_summary_df.to_csv(result_dir / "fit_summary.csv", index=False)
     with pd.ExcelWriter(result_dir / "fit_summary.xlsx", engine="openpyxl") as writer:
         fit_summary_df.to_excel(writer, sheet_name="Fit_summary", index=False)
-    report = f"{method} Analysis Report\\n\\nPeak values:\\n{peak_df.to_string(index=False)}\\n\\nFit summary:\\n{fit_summary_df.to_string(index=False)}"
+    report = f"{method} Analysis Report\\n\\nBaseline mode: {baseline_mode}\\nPeak search: {peak_search_min_v}–{peak_search_max_v} V\\nBaseline search start: {baseline_search_min_v} V\\n\\nPeak values:\\n{peak_df.to_string(index=False)}\\n\\nFit summary:\\n{fit_summary_df.to_string(index=False)}"
     (report_dir / "analysis_summary.txt").write_text(report, encoding="utf-8")
     return {"peak_df": peak_df, "fit_summary_df": fit_summary_df, "result_dir": str(result_dir), "figure_dir": str(figure_dir), "report_dir": str(report_dir)}
