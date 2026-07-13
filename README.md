@@ -1,42 +1,26 @@
-# EC Research Studio v1.5.1 Native Raw Import
+# EC Research Studio v1.6 Experiment Summary
 
-## New native instrument formats
-- DPV: `.mtd`
-- SWV: `.mts`
-- EIS: `.mteisp`
-- Existing CSV files remain supported.
+## New
+- Experiment Summary tab
+- Displays the most recently updated result values
+- Displays the latest DPV, SWV, EIS, or CV graph
+- Displays the latest DPV/SWV ΔPeak table
+- Shows raw/result/figure counts
+- Shows the most recent ELN note
+- Exports a self-contained HTML experiment report with the graph embedded
 
-## Curve selection rule
-- DPV/SWV: the last stored curve in the file is used.
-- Differential current is reconstructed as `i1 - i2`, matching the instrument CSV export.
-- EIS: the last stored `NYQUIST` curve is used.
-- EIS fields are read as:
-  - `potential` → Z′
-  - `i1` → −Z″
-  - `time` → frequency
-
-## Workflow
-1. Upload the original instrument file without CSV conversion.
-2. Select the correct category: DPV, SWV, or EIS.
-3. Save it to the Experiment.
-4. Run the individual analysis tab or Auto Analyze.
-5. The original raw file remains unchanged.
-
-## Compatibility
-- CSV workflows still work.
-- Existing Projects and Experiments remain compatible.
-- DPV shape-based local-minimum baseline settings remain available.
+## Selection rules
+- Latest result: newest CSV/XLSX file inside `Results`
+- Graph: newest relevant PNG, preferring the same method as the latest result
+- ΔPeak: newest `peak_values` or `baseline_info` table from DPV/SWV
+- No analysis algorithms or native raw parsers were changed
 
 ## Apply patch
 Overwrite:
 - `main.py`
 - `README.md`
-- `core/voltammetry.py`
-- `core/eis.py`
-- `plugins/auto_analyzer.py`
-- `quick/workspace.py`
-- `rawio/__init__.py`
-- `rawio/instrument_xml.py`
+- `summary/__init__.py`
+- `summary/experiment_summary.py`
 
 Then run:
 ```bat
@@ -44,4 +28,4 @@ streamlit run main.py
 ```
 
 ## GitHub Desktop
-Summary: `Add native instrument raw import v1.5.1`
+Summary: `Add Experiment Summary and HTML report v1.6`

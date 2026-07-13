@@ -23,6 +23,16 @@ from quick.workspace import (
     export_experiment_zip,
 )
 
+from summary.experiment_summary import (
+    latest_result_table,
+    latest_method_figure,
+    latest_delta_peak_table,
+    compact_latest_values,
+    experiment_counts,
+    latest_eln_entry,
+    create_html_report,
+)
+
 from plugins.auto_analyzer import (
     available_methods,
     build_method_table,
@@ -40,7 +50,7 @@ from workspace.results import (
 )
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v1.5.1 Native Raw Import")
+st.title("EC Research Studio v1.6 Experiment Summary")
 st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
@@ -63,8 +73,8 @@ project_path, project_info = open_project(selected_project)
 init_database(project_path)
 st.header(f"Project: {project_info['project_name']}")
 
-tabq, taba, tabr, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
-    "Today", "Auto Analyze", "Results", "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
+tabq, tabs, taba, tabr, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
+    "Today", "Experiment Summary", "Auto Analyze", "Results", "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
 ])
 
 
@@ -207,6 +217,141 @@ with tabq:
                     )
 
 
+
+
+
+with tabs:
+    st.subheader("Experiment Summary")
+    st.caption("가장 최근 결과값, 최신 전기화학 그래프, ΔPeak 값을 한 화면에서 확인합니다.")
+
+    experiments = project_info.get("experiments", [])
+
+    if not experiments:
+        st.info("먼저 Experiment를 만들어줘.")
+    else:
+        selected_exp_summary = st.selectbox(
+            "Experiment",
+            experiments,
+            key="summary_exp",
+        )
+        exp_path = Path(project_path) / "Experiments" / selected_exp_summary
+
+        latest_method, latest_path, latest_df = latest_result_table(exp_path)
+        graph_method, graph_path = latest_method_figure(
+            exp_path,
+            preferred_method=latest_method,
+        )
+        delta_method, delta_path, delta_df = latest_delta_peak_table(
+            exp_path,
+            preferred_method=latest_method,
+        )
+
+        counts_df = experiment_counts(exp_path)
+        total_raw = int(counts_df["Raw files"].sum())
+        total_results = int(counts_df["Result files"].sum())
+        total_figures = int(counts_df["Figures"].sum())
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Raw files", total_raw)
+        c2.metric("Result files", total_results)
+        c3.metric("Figures", total_figures)
+        c4.metric("Latest method", latest_method or "None")
+
+        st.write("### Analysis status")
+        st.dataframe(counts_df, use_container_width=True)
+
+        left, right = st.columns([1.1, 1.4])
+
+        with left:
+            st.write("### Latest updated result")
+            if latest_df is None or latest_df.empty:
+                st.info("최근 결과 테이블이 없습니다.")
+            else:
+                st.caption(f"{latest_method} | {Path(latest_path).name}")
+                latest_values = compact_latest_values(latest_df, max_rows=10)
+                st.dataframe(latest_values, use_container_width=True)
+
+                st.download_button(
+                    "Download latest values CSV",
+                    data=latest_values.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"{selected_exp_summary}_latest_values.csv",
+                    mime="text/csv",
+                    key="summary_latest_values_download",
+                )
+
+            st.write("### Latest ΔPeak values")
+            if delta_df is None or delta_df.empty:
+                st.info("DPV 또는 SWV ΔPeak 결과가 없습니다.")
+            else:
+                st.caption(f"{delta_method} | {Path(delta_path).name}")
+                delta_values = compact_latest_values(delta_df, max_rows=12)
+                st.dataframe(delta_values, use_container_width=True)
+
+                st.download_button(
+                    "Download ΔPeak CSV",
+                    data=delta_values.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"{selected_exp_summary}_{delta_method}_delta_peak.csv",
+                    mime="text/csv",
+                    key="summary_delta_download",
+                )
+
+        with right:
+            st.write("### Latest electrochemical graph")
+            if graph_path is None:
+                st.info("표시할 DPV, SWV, EIS 또는 CV Figure가 없습니다.")
+            else:
+                st.caption(f"{graph_method} | {graph_path.name}")
+                st.image(
+                    str(graph_path),
+                    use_container_width=True,
+                )
+
+                with open(graph_path, "rb") as f:
+                    st.download_button(
+                        "Download graph PNG",
+                        data=f.read(),
+                        file_name=graph_path.name,
+                        mime="image/png",
+                        key="summary_graph_download",
+                    )
+
+        st.write("### Latest ELN note")
+        latest_note = latest_eln_entry(exp_path)
+        if latest_note is None:
+            st.info("저장된 ELN note가 없습니다.")
+        else:
+            st.write(f"**{latest_note.get('title', '')}**")
+            st.caption(latest_note.get("created_at", ""))
+            st.write(latest_note.get("result_summary", ""))
+
+        if st.button(
+            "Create HTML Experiment Report",
+            type="primary",
+            key="summary_html_create",
+        ):
+            html_path = create_html_report(
+                exp_path=exp_path,
+                experiment_name=selected_exp_summary,
+                latest_method=latest_method,
+                latest_result_path=latest_path,
+                latest_result_df=latest_df,
+                graph_method=graph_method,
+                graph_path=graph_path,
+                delta_method=delta_method,
+                delta_path=delta_path,
+                delta_df=delta_df,
+            )
+
+            st.success("HTML experiment report created.")
+
+            with open(html_path, "rb") as f:
+                st.download_button(
+                    "Download HTML report",
+                    data=f.read(),
+                    file_name=html_path.name,
+                    mime="text/html",
+                    key="summary_html_download",
+                )
 
 
 with taba:
