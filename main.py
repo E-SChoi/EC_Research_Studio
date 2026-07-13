@@ -14,10 +14,25 @@ from database.db import init_database, add_record, get_table, get_names, seed_de
 from statistics.replicate import run_statistics_analysis
 from utils.backup import create_project_backup
 from eln.notebook import load_entries, add_entry, delete_entry, entries_dataframe, export_markdown
-from quick.workspace import save_uploaded_files, save_quick_note, build_inventory, get_analysis_status, recent_figures, export_experiment_zip
+from quick.workspace import (
+    save_uploaded_files,
+    save_quick_note,
+    build_inventory,
+    get_analysis_status,
+    recent_figures,
+    export_experiment_zip,
+)
+
+from workspace.results import (
+    collect_result_files,
+    read_result_table,
+    collect_figures,
+    batch_summary,
+    generate_discussion,
+)
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v1.2 Stable")
+st.title("EC Research Studio v1.4 Stable")
 st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
@@ -40,8 +55,8 @@ project_path, project_info = open_project(selected_project)
 init_database(project_path)
 st.header(f"Project: {project_info['project_name']}")
 
-tabq, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
-    "Today", "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
+tabq, tabr, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
+    "Today", "Results", "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
 ])
 
 
@@ -182,6 +197,56 @@ with tabq:
                         mime="application/zip",
                         key="today_download_zip"
                     )
+
+
+
+with tabr:
+    st.subheader("Results")
+    experiments = project_info.get("experiments", [])
+    if not experiments:
+        st.info("먼저 Experiment를 만들어줘.")
+    else:
+        selected_exp_results = st.selectbox("Experiment", experiments, key="results_exp")
+        exp_path = Path(project_path) / "Experiments" / selected_exp_results
+        st.dataframe(batch_summary(exp_path), use_container_width=True)
+
+        table_tab, figure_tab, discussion_tab = st.tabs(["Result tables", "Figure gallery", "Discussion draft"])
+
+        with table_tab:
+            files = collect_result_files(exp_path)
+            if not files:
+                st.info("결과 파일이 없습니다.")
+            else:
+                labels = [f"[{x['method']}] {x['label']}" for x in files]
+                selected = st.selectbox("Result file", labels, key="result_file")
+                item = files[labels.index(selected)]
+                df = read_result_table(item["path"])
+                st.dataframe(df, use_container_width=True)
+                st.download_button("Download CSV", df.to_csv(index=False).encode("utf-8-sig"), file_name=Path(item["path"]).stem+"_export.csv", mime="text/csv")
+
+        with figure_tab:
+            figs = collect_figures(exp_path)
+            if not figs:
+                st.info("Figure가 없습니다.")
+            else:
+                cols = st.columns(3)
+                for i, item in enumerate(figs[:12]):
+                    with cols[i % 3]:
+                        st.image(item["path"], caption=f"[{item['method']}] {Path(item['path']).name}", use_container_width=True)
+
+        with discussion_tab:
+            files = collect_result_files(exp_path)
+            if not files:
+                st.info("Discussion 초안을 만들 결과 파일이 없습니다.")
+            else:
+                labels = [f"[{x['method']}] {x['label']}" for x in files]
+                selected = st.selectbox("Source result", labels, key="discussion_source")
+                item = files[labels.index(selected)]
+                if st.button("Generate Discussion Draft", type="primary", key="discussion_generate"):
+                    df = read_result_table(item["path"])
+                    draft = generate_discussion(item["method"], df)
+                    st.text_area("Discussion draft", value=draft, height=300)
+                    st.download_button("Download draft", draft.encode("utf-8"), file_name=f"{selected_exp_results}_{item['method']}_discussion.txt", mime="text/plain")
 
 
 with tab0:
