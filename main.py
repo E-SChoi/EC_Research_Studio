@@ -14,10 +14,10 @@ from database.db import init_database, add_record, get_table, get_names, seed_de
 from statistics.replicate import run_statistics_analysis
 from utils.backup import create_project_backup
 from eln.notebook import load_entries, add_entry, delete_entry, entries_dataframe, export_markdown
-from quick.workspace import save_uploaded_files, build_inventory, save_quick_note, export_experiment_zip
+from quick.workspace import save_uploaded_files, save_quick_note, build_inventory, get_analysis_status, recent_figures, export_experiment_zip
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v1.2 Working Release")
+st.title("EC Research Studio v1.2 Stable")
 st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
@@ -41,70 +41,148 @@ init_database(project_path)
 st.header(f"Project: {project_info['project_name']}")
 
 tabq, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
-    "Quick Workspace", "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
+    "Today", "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
 ])
 
 
+
 with tabq:
-    st.subheader("Quick Workspace")
-    st.caption("오늘 실험 데이터를 바로 정리하고 기록하는 화면")
+    st.subheader("Today's Experiment")
+
     experiments = project_info.get("experiments", [])
+
     if not experiments:
-        st.info("먼저 Experiments 또는 Experiment Wizard 탭에서 실험을 하나 만들어줘.")
+        st.info("먼저 Experiments 또는 Experiment Wizard 탭에서 실험을 생성해줘.")
     else:
-        selected_exp_quick = st.selectbox("Experiment", experiments, key="quick_exp")
-        exp_path = Path(project_path) / "Experiments" / selected_exp_quick
+        selected_exp_today = st.selectbox("Experiment", experiments, key="today_exp")
+        exp_path = Path(project_path) / "Experiments" / selected_exp_today
+
+        status = get_analysis_status(exp_path)
         inventory = build_inventory(exp_path)
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total files", len(inventory))
-        c2.metric("Raw data files", int(inventory["Category"].astype(str).str.contains("raw").sum()) if not inventory.empty else 0)
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Files", len(inventory))
+        c2.metric("Raw data", int(inventory["Category"].astype(str).str.contains("raw").sum()) if not inventory.empty else 0)
         c3.metric("Figures", int((inventory["Category"] == "Figure").sum()) if not inventory.empty else 0)
-        import_tab, note_tab, inventory_tab, export_tab = st.tabs([
-            "1. Import today's files", "2. Quick note", "3. Data inventory", "4. Export experiment"
+        c4.metric("Notes", int((inventory["Category"] == "Note").sum()) if not inventory.empty else 0)
+
+        st.write("### Analysis status")
+        status_df = pd.DataFrame([
+            {
+                "Method": method,
+                "Raw files": info["raw_count"],
+                "Result files": info["result_count"],
+                "Status": info["state"]
+            }
+            for method, info in status.items()
         ])
+        st.dataframe(status_df, use_container_width=True)
+
+        import_tab, note_tab, preview_tab, inventory_tab, export_tab = st.tabs([
+            "Import",
+            "Quick Note",
+            "Recent Figures",
+            "Inventory",
+            "Export"
+        ])
+
         with import_tab:
-            import_method = st.selectbox("File category", ["DPV", "SWV", "EIS", "CV", "Images", "Other"], key="quick_method")
-            allowed_types = {
-                "DPV": ["csv", "txt", "xlsx"], "SWV": ["csv", "txt", "xlsx"],
-                "EIS": ["csv", "txt", "xlsx"], "CV": ["csv", "txt", "xlsx"],
+            category = st.selectbox(
+                "File category",
+                ["DPV", "SWV", "EIS", "CV", "Images", "Other"],
+                key="today_category"
+            )
+
+            type_map = {
+                "DPV": ["csv", "txt", "xlsx"],
+                "SWV": ["csv", "txt", "xlsx"],
+                "EIS": ["csv", "txt", "xlsx"],
+                "CV": ["csv", "txt", "xlsx"],
                 "Images": ["png", "jpg", "jpeg", "webp", "tif", "tiff"],
                 "Other": ["pdf", "docx", "pptx", "txt", "csv", "xlsx", "zip"]
             }
-            quick_files = st.file_uploader("Drag and drop files", type=allowed_types[import_method], accept_multiple_files=True, key="quick_files")
-            if quick_files:
-                st.dataframe(pd.DataFrame([{"File": f.name, "Category": import_method, "Size (KB)": round(f.size / 1024, 2)} for f in quick_files]), use_container_width=True)
-            if st.button("Save files to experiment", type="primary", key="quick_save_files"):
-                saved = save_uploaded_files(exp_path, import_method, quick_files)
+
+            files = st.file_uploader(
+                "Drag and drop files",
+                type=type_map[category],
+                accept_multiple_files=True,
+                key="today_files"
+            )
+
+            if files:
+                st.dataframe(pd.DataFrame([
+                    {
+                        "File": f.name,
+                        "Category": category,
+                        "Size (KB)": round(f.size / 1024, 2)
+                    }
+                    for f in files
+                ]), use_container_width=True)
+
+            if st.button("Save to experiment", type="primary", key="today_save_files"):
+                saved = save_uploaded_files(exp_path, category, files)
                 if saved:
                     st.success(f"{len(saved)} file(s) saved.")
                     st.dataframe(pd.DataFrame(saved), use_container_width=True)
                 else:
-                    st.warning("선택된 파일이 없습니다.")
+                    st.warning("선택한 파일이 없습니다.")
+
         with note_tab:
-            quick_title = st.text_input("Note title", value="Today's experiment note", key="quick_note_title")
-            quick_tags = st.text_input("Tags", value="", key="quick_note_tags")
-            quick_note = st.text_area("What happened today?", value="", height=220, placeholder="실험 조건, 관찰 내용, 이상 신호, 다음 실험 계획 등을 기록하세요.", key="quick_note_text")
-            if st.button("Save quick note", type="primary", key="quick_save_note"):
-                note_path = save_quick_note(exp_path, quick_title, quick_note, quick_tags)
+            observation = st.text_area("Observation", height=120, key="today_observation")
+            result = st.text_area("Result", height=120, key="today_result")
+            next_action = st.text_area("Next experiment / action", height=100, key="today_next")
+
+            if st.button("Save quick note", type="primary", key="today_save_note"):
+                note_path = save_quick_note(exp_path, observation, result, next_action)
                 st.success("Quick note saved.")
                 st.code(str(note_path))
+
+        with preview_tab:
+            figures = recent_figures(exp_path)
+
+            if not figures:
+                st.info("아직 생성된 Figure가 없습니다.")
+            else:
+                cols = st.columns(3)
+                for i, fig_path in enumerate(figures):
+                    with cols[i % 3]:
+                        st.image(str(fig_path), caption=fig_path.name, use_container_width=True)
+
         with inventory_tab:
             inventory = build_inventory(exp_path)
+
             if inventory.empty:
-                st.info("아직 저장된 파일이 없습니다.")
+                st.info("저장된 파일이 없습니다.")
             else:
                 categories = ["All"] + sorted(inventory["Category"].dropna().unique().tolist())
-                selected_category = st.selectbox("Filter", categories, key="inventory_filter")
+                selected_category = st.selectbox("Filter", categories, key="today_inventory_filter")
                 view_df = inventory if selected_category == "All" else inventory[inventory["Category"] == selected_category]
                 st.dataframe(view_df, use_container_width=True)
-                st.download_button("Download inventory CSV", data=view_df.to_csv(index=False).encode("utf-8-sig"), file_name=f"{selected_exp_quick}_inventory.csv", mime="text/csv", key="inventory_download")
+
+                st.download_button(
+                    "Download inventory CSV",
+                    data=view_df.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"{selected_exp_today}_inventory.csv",
+                    mime="text/csv",
+                    key="today_inventory_download"
+                )
+
         with export_tab:
-            st.write("현재 Experiment의 원본 데이터, 결과, Figure, 노트를 하나의 ZIP으로 묶습니다.")
-            if st.button("Create experiment ZIP", type="primary", key="quick_export_zip"):
+            st.write("현재 Experiment의 원본 데이터, 결과, Figure, Note를 ZIP으로 내보냅니다.")
+
+            if st.button("Create experiment ZIP", type="primary", key="today_export"):
                 zip_path = export_experiment_zip(exp_path)
                 st.success("Experiment ZIP created.")
+
                 with open(zip_path, "rb") as f:
-                    st.download_button("Download experiment ZIP", data=f.read(), file_name=zip_path.name, mime="application/zip", key="quick_download_zip")
+                    st.download_button(
+                        "Download experiment ZIP",
+                        data=f.read(),
+                        file_name=zip_path.name,
+                        mime="application/zip",
+                        key="today_download_zip"
+                    )
+
 
 with tab0:
     st.subheader("Project Dashboard")
