@@ -23,6 +23,12 @@ from quick.workspace import (
     export_experiment_zip,
 )
 
+from history.analysis_history import (
+    scan_project_history,
+    filter_history,
+    compact_history_table,
+)
+
 from summary.experiment_summary import (
     latest_result_table,
     latest_method_figure,
@@ -50,7 +56,7 @@ from workspace.results import (
 )
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v1.6 Experiment Summary")
+st.title("EC Research Studio v1.7.0 Analysis History")
 st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
@@ -73,8 +79,8 @@ project_path, project_info = open_project(selected_project)
 init_database(project_path)
 st.header(f"Project: {project_info['project_name']}")
 
-tabq, tabs, taba, tabr, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
-    "Today", "Experiment Summary", "Auto Analyze", "Results", "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
+tabq, tabh, tabs, taba, tabr, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
+    "Today", "Analysis History", "Experiment Summary", "Auto Analyze", "Results", "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
 ])
 
 
@@ -219,6 +225,57 @@ with tabq:
 
 
 
+
+
+with tabh:
+    st.subheader("Analysis History")
+    st.caption("프로젝트의 Experiment와 분석 결과 이력을 검색하고 최근 결과를 확인합니다.")
+    history_df = scan_project_history(project_path)
+    if history_df.empty:
+        st.info("현재 프로젝트에서 분석 이력을 찾지 못했습니다.")
+    else:
+        c1, c2, c3 = st.columns([1.8, 1, 1])
+        keyword = c1.text_input("Search", value="", placeholder="Experiment, target, file name, ELN keyword, concentration...", key="history_keyword")
+        method_filter = c2.selectbox("Method", ["All", "DPV", "SWV", "EIS", "CV"], key="history_method")
+        sort_order = c3.selectbox("Sort", ["Latest first", "Oldest first"], key="history_sort")
+        filtered_history = filter_history(history_df, keyword=keyword, method=method_filter, sort_order=sort_order)
+        st.write("### History table")
+        compact = compact_history_table(filtered_history)
+        st.dataframe(compact, use_container_width=True, hide_index=True)
+        st.download_button("Download filtered history CSV", data=compact.to_csv(index=False).encode("utf-8-sig"), file_name="analysis_history.csv", mime="text/csv", key="history_download")
+        if filtered_history.empty:
+            st.info("현재 검색 조건과 일치하는 분석 이력이 없습니다.")
+        else:
+            labels=[f"{r['Experiment']} | {r['Method']} | {r['Latest activity']}" for _,r in filtered_history.iterrows()]
+            selected=st.selectbox("Open history record",labels,key="history_open_record")
+            record=filtered_history.iloc[labels.index(selected)].to_dict()
+            st.write("### Record preview")
+            m1,m2,m3,m4=st.columns(4)
+            m1.metric("Method",record.get("Method","")); m2.metric("Raw files",int(record.get("Raw files",0))); m3.metric("Result files",int(record.get("Result files",0))); m4.metric("Figures",int(record.get("Figures",0)))
+            left,right=st.columns([1,1.35])
+            with left:
+                st.write(f"**Experiment:** {record.get('Experiment','')}")
+                st.write(f"**Latest activity:** {record.get('Latest activity','')}")
+                st.write(f"**Target:** {record.get('Target','')}")
+                st.write(f"**Sensor:** {record.get('Sensor','')}")
+                st.write(f"**Researcher:** {record.get('Researcher','')}")
+                st.write(f"**Key result:** {record.get('Key result','')}")
+                if record.get('Latest result path'): st.code(record['Latest result path'])
+                if record.get('Latest report path'): st.code(record['Latest report path'])
+                st.code(record.get('Experiment path',''))
+            with right:
+                fp=record.get('Latest figure path','')
+                if fp and Path(fp).exists():
+                    st.image(fp,caption=Path(fp).name,use_container_width=True)
+                    with open(fp,'rb') as f: st.download_button('Download latest figure',data=f.read(),file_name=Path(fp).name,mime='image/png',key='history_figure_download')
+                else: st.info('이 기록에 표시할 Figure가 없습니다.')
+            rp=record.get('Latest result path','')
+            if rp and Path(rp).exists():
+                st.write('### Latest result preview')
+                try:
+                    preview=pd.read_excel(rp) if Path(rp).suffix.lower()=='.xlsx' else pd.read_csv(rp)
+                    st.dataframe(preview.tail(12),use_container_width=True)
+                except Exception as e: st.warning(f'Result preview를 읽지 못했습니다: {e}')
 
 with tabs:
     st.subheader("Experiment Summary")
