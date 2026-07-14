@@ -56,7 +56,7 @@ from workspace.results import (
 )
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v1.7.0 Analysis History")
+st.title("EC Research Studio v1.7.1 Sidebar UI")
 st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
@@ -79,13 +79,43 @@ project_path, project_info = open_project(selected_project)
 init_database(project_path)
 st.header(f"Project: {project_info['project_name']}")
 
-tabq, tabh, tabs, taba, tabr, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
-    "Today", "Analysis History", "Experiment Summary", "Auto Analyze", "Results", "Dashboard", "Experiments", "Experiment Wizard", "Database", "Raw Data Import", "DPV Analysis", "SWV Analysis", "EIS Analysis", "CV Analysis", "Statistics", "Figure Builder", "ELN", "Project Info"
-])
+PAGE_OPTIONS = [
+    "Today",
+    "Analysis History",
+    "Experiment Summary",
+    "Auto Analyze",
+    "Results",
+    "Dashboard",
+    "Experiments",
+    "Experiment Wizard",
+    "Database",
+    "Raw Data Import",
+    "DPV Analysis",
+    "SWV Analysis",
+    "EIS Analysis",
+    "CV Analysis",
+    "Statistics",
+    "Figure Builder",
+    "ELN",
+    "Project Info",
+]
+
+st.sidebar.markdown("## EC Research Studio")
+st.sidebar.markdown("### Navigation")
+selected_page = st.sidebar.radio(
+    "Open page",
+    PAGE_OPTIONS,
+    index=0,
+    key="main_navigation",
+)
+
+st.sidebar.markdown("---")
+st.sidebar.caption("Only the selected page is rendered.")
 
 
 
-with tabq:
+
+if selected_page == "Today":
     st.subheader("Today's Experiment")
 
     experiments = project_info.get("experiments", [])
@@ -227,7 +257,7 @@ with tabq:
 
 
 
-with tabh:
+if selected_page == "Analysis History":
     st.subheader("Analysis History")
     st.caption("프로젝트의 Experiment와 분석 결과 이력을 검색하고 최근 결과를 확인합니다.")
     history_df = scan_project_history(project_path)
@@ -277,7 +307,7 @@ with tabh:
                     st.dataframe(preview.tail(12),use_container_width=True)
                 except Exception as e: st.warning(f'Result preview를 읽지 못했습니다: {e}')
 
-with tabs:
+if selected_page == "Experiment Summary":
     st.subheader("Experiment Summary")
     st.caption("가장 최근 결과값, 최신 전기화학 그래프, ΔPeak 값을 한 화면에서 확인합니다.")
 
@@ -411,7 +441,7 @@ with tabs:
                 )
 
 
-with taba:
+if selected_page == "Auto Analyze":
     st.subheader("Auto Analyzer")
     st.caption("Instrument raw files (.mtd/.mts/.mteisp) and CSV files are analyzed directly. When multiple curves are stored, the last measurement curve is used.")
 
@@ -577,7 +607,7 @@ with taba:
                                 )
 
 
-with tabr:
+if selected_page == "Results":
     st.subheader("Results")
     experiments = project_info.get("experiments", [])
     if not experiments:
@@ -626,7 +656,7 @@ with tabr:
                     st.download_button("Download draft", draft.encode("utf-8"), file_name=f"{selected_exp_results}_{item['method']}_discussion.txt", mime="text/plain")
 
 
-with tab0:
+if selected_page == "Dashboard":
     st.subheader("Project Dashboard")
 
     experiments = project_info.get("experiments", [])
@@ -685,7 +715,7 @@ with tab0:
         st.success("Project backup created.")
         st.code(str(backup_path))
 
-with tab1:
+if selected_page == "Experiments":
     st.subheader("New Experiment")
     col1, col2 = st.columns(2)
     with col1:
@@ -723,7 +753,7 @@ with tab1:
         st.info("아직 실험이 없습니다.")
 
 
-with tab2:
+if selected_page == "Experiment Wizard":
     st.subheader("Experiment Wizard")
 
     sensor_names = get_names(project_path, "sensors")
@@ -776,7 +806,7 @@ with tab2:
         st.code(str(exp_path))
         st.rerun()
 
-with tab3:
+if selected_page == "Database":
     st.subheader("Research Database")
 
     db_tabs = st.tabs(["Sensors", "Samples", "Recognition", "Reagents"])
@@ -876,7 +906,7 @@ with tab3:
         st.dataframe(pd.DataFrame(get_table(project_path, "reagents")), use_container_width=True)
 
 
-with tab4:
+if selected_page == "Raw Data Import":
     st.subheader("Import instrument raw files into experiment")
     experiments = project_info.get("experiments", [])
     if not experiments:
@@ -1017,16 +1047,16 @@ def analysis_tab(method, parse_func, run_func, key_prefix):
         except Exception as e:
             st.error(f"{method} analysis failed: {e}")
 
-with tab5:
+if selected_page == "DPV Analysis":
     analysis_tab("DPV", parse_dpv_concentration, run_dpv_analysis, "dpv")
-with tab6:
+if selected_page == "SWV Analysis":
     analysis_tab("SWV", parse_swv_concentration, run_swv_analysis, "swv")
-with tab7:
+if selected_page == "EIS Analysis":
     analysis_tab("EIS", parse_eis_concentration, run_eis_analysis, "eis")
 
 
 
-with tab8:
+if selected_page == "CV Analysis":
     st.subheader("CV Analysis")
 
     experiments = project_info.get("experiments", [])
@@ -1092,7 +1122,7 @@ with tab8:
                         st.error(f"CV analysis failed: {e}")
 
 
-with tab9:
+if selected_page == "Statistics":
     st.subheader("Statistics Engine")
 
     experiments = project_info.get("experiments", [])
@@ -1167,7 +1197,7 @@ with tab9:
                     st.error(f"Statistics analysis failed: {e}")
 
 
-with tab10:
+if selected_page == "Figure Builder":
     st.subheader("Figure Builder")
 
     if PPTX_AVAILABLE:
@@ -1237,7 +1267,7 @@ with tab10:
                     st.error(f"Figure generation failed: {e}")
 
 
-with tab11:
+if selected_page == "ELN":
     st.subheader("Electronic Lab Notebook")
     experiments = project_info.get("experiments", [])
 
@@ -1342,7 +1372,7 @@ with tab11:
                     st.rerun()
 
 
-with tab12:
+if selected_page == "Project Info":
     st.subheader("Project JSON")
     st.json(project_info)
     st.write("Project folder:")

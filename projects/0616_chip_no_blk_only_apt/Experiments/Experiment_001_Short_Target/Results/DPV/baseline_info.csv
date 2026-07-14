@@ -1,7 +1,0 @@
-File,Label,Concentration_pM,Concentration_M,Baseline_mode,Baseline_potential_V,Baseline_current_uA,Peak_potential_V,Peak_current_uA,DeltaPeak_peak_minus_preceding_min_uA
-3-pbs.mtd,3-pbs.mtd,0.0,0.0,preceding_local_minimum,0.26,4.295834599999999,0.49,6.420831,2.1249964000000006
-4-10pM.mtd,10 pm,10.0,1e-11,preceding_local_minimum,0.255,4.954166700000001,0.46,6.750000999999999,1.7958342999999983
-5-50pM.mtd,50 pm,50.0,5e-11,preceding_local_minimum,0.255,5.620833000000001,0.44,7.041664000000001,1.4208309999999997
-6-100pM.mtd,100 pm,100.0,1e-10,preceding_local_minimum,0.255,6.2583325,0.42,7.462502000000001,1.2041695000000008
-7-250pM.mtd,250 pm,250.0,2.5e-10,preceding_local_minimum,0.255,6.945833,0.39,7.904166,0.9583329999999997
-8-500pM.mtd,500 pm,500.0,5e-10,preceding_local_minimum,0.26,7.504166,0.385,8.279164999999999,0.7749989999999993
