@@ -1,47 +1,46 @@
-# EC Research Studio v1.7.1 Sidebar UI
+# EC Research Studio v1.7.2 Smart Folder Import
 
-## UI change
-- Replaced the long top tab bar with sidebar navigation.
-- Only the selected page is rendered.
-- Other pages are not displayed below the active page.
-- Existing analysis functions and project data are unchanged.
+## New
+- Upload one complete experiment folder or ZIP file.
+- Automatically classify native electrochemical files:
+  - `.mtd` → DPV
+  - `.mts` → SWV
+  - `.mteisp` → EIS
+- Automatically classify images and documents.
+- Preview and edit classification before import.
+- CSV files are marked `Review required`.
+- Duplicate handling:
+  - Rename with timestamp
+  - Skip
+  - Overwrite
+- Save import logs as CSV.
+- Save import metadata as JSON.
+- Optional Auto Analyze after import.
 
-## Navigation pages
-- Today
-- Analysis History
-- Experiment Summary
-- Auto Analyze
-- Results
-- Dashboard
-- Experiments
-- Experiment Wizard
-- Database
-- Raw Data Import
-- DPV / SWV / EIS / CV Analysis
-- Statistics
-- Figure Builder
-- ELN
-- Project Info
+## Safety
+- Original uploaded files are never modified.
+- Existing analysis engines and native raw parsers are unchanged.
+- The default duplicate policy preserves both files by renaming the new one.
+- Unknown CSV files are not guessed automatically.
 
 ## Apply patch
-1. Stop Streamlit.
-2. Extract the patch ZIP.
-3. Overwrite:
-   - `main.py`
-   - `README.md`
-   - `CHANGELOG.md`
-   - `USER_GUIDE.md`
-   - `RELEASE_NOTE.md`
-   - `VALIDATION_REPORT.md`
-4. Run:
+Overwrite:
+- `main.py`
+- `README.md`
+- `CHANGELOG.md`
+- `USER_GUIDE.md`
+- `RELEASE_NOTE.md`
+- `VALIDATION_REPORT.md`
+- `smart_import/__init__.py`
+- `smart_import/folder_import.py`
 
+Then run:
 ```bat
 streamlit run main.py
 ```
 
 ## GitHub Desktop
 Summary:
-
 ```text
-Add sidebar page isolation v1.7.1
+Add Smart Folder Import v1.7.2
 ```

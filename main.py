@@ -23,6 +23,15 @@ from quick.workspace import (
     export_experiment_zip,
 )
 
+from smart_import.folder_import import (
+    CATEGORY_DESTINATIONS,
+    uploaded_files_to_records,
+    zip_upload_to_records,
+    records_preview_dataframe,
+    update_records_from_preview,
+    import_records,
+)
+
 from history.analysis_history import (
     scan_project_history,
     filter_history,
@@ -56,7 +65,7 @@ from workspace.results import (
 )
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v1.7.1 Sidebar UI")
+st.title("EC Research Studio v1.7.2 Smart Folder Import")
 st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
@@ -147,13 +156,206 @@ if selected_page == "Today":
         ])
         st.dataframe(status_df, use_container_width=True)
 
-        import_tab, note_tab, preview_tab, inventory_tab, export_tab = st.tabs([
-            "Import",
+        smart_tab, import_tab, note_tab, preview_tab, inventory_tab, export_tab = st.tabs([
+            "Smart Folder Import",
+            "Manual Import",
             "Quick Note",
             "Recent Figures",
             "Inventory",
             "Export"
         ])
+
+
+        with smart_tab:
+            st.write("### Import a complete experiment folder")
+            st.caption(
+                "Drop the whole folder or a ZIP file. Native files are classified by extension: "
+                ".mtd → DPV, .mts → SWV, .mteisp → EIS."
+            )
+
+            input_mode = st.radio(
+                "Input format",
+                ["Folder upload", "ZIP upload"],
+                horizontal=True,
+                key="smart_import_mode",
+            )
+
+            folder_files = []
+            zip_file = None
+
+            if input_mode == "Folder upload":
+                folder_files = st.file_uploader(
+                    "Drag the experiment folder here",
+                    accept_multiple_files="directory",
+                    key="smart_folder_files",
+                    help="Select or drag a folder containing all files from today's experiment.",
+                )
+                smart_records = uploaded_files_to_records(folder_files)
+            else:
+                zip_file = st.file_uploader(
+                    "Drag the experiment ZIP here",
+                    type=["zip"],
+                    accept_multiple_files=False,
+                    key="smart_zip_file",
+                )
+                try:
+                    smart_records = zip_upload_to_records(zip_file)
+                except Exception as e:
+                    st.error(f"ZIP file could not be read: {e}")
+                    smart_records = []
+
+            if smart_records:
+                detected_preview = records_preview_dataframe(smart_records)
+
+                st.write("#### Classification summary")
+                summary_counts = (
+                    detected_preview["Detected type"]
+                    .value_counts()
+                    .rename_axis("Detected type")
+                    .reset_index(name="Files")
+                )
+                st.dataframe(summary_counts, use_container_width=True, hide_index=True)
+
+                st.write("#### Review before import")
+                st.caption(
+                    "CSV files are marked Review required because the measurement type "
+                    "cannot be determined from the extension alone."
+                )
+
+                edited_preview = st.data_editor(
+                    detected_preview,
+                    use_container_width=True,
+                    hide_index=True,
+                    disabled=[
+                        "Record ID",
+                        "Original path",
+                        "File",
+                        "Detected type",
+                        "Destination",
+                        "Size (KB)",
+                        "Source",
+                    ],
+                    column_config={
+                        "Selected type": st.column_config.SelectboxColumn(
+                            "Selected type",
+                            options=[
+                                "DPV",
+                                "SWV",
+                                "EIS",
+                                "CV",
+                                "Images",
+                                "Other",
+                                "Review required",
+                            ],
+                            required=True,
+                        )
+                    },
+                    key="smart_import_preview",
+                )
+
+                duplicate_policy = st.selectbox(
+                    "When a file with the same name already exists",
+                    ["Rename with timestamp", "Skip", "Overwrite"],
+                    index=0,
+                    key="smart_duplicate_policy",
+                )
+
+                run_after_import = st.checkbox(
+                    "Run Auto Analyze after import",
+                    value=False,
+                    key="smart_run_auto_analyze",
+                    help="Only DPV, SWV, EIS, and CV files imported into RawData are analyzed.",
+                )
+
+                if st.button(
+                    "Classify and save to Experiment",
+                    type="primary",
+                    key="smart_import_save",
+                ):
+                    final_records = update_records_from_preview(
+                        smart_records,
+                        edited_preview,
+                    )
+
+                    if any(
+                        record.get("Selected type") == "Review required"
+                        for record in final_records
+                    ):
+                        st.warning(
+                            "Review required files will be stored in "
+                            "Attachments/ReviewRequired. Change their Selected type "
+                            "before import when the method is known."
+                        )
+
+                    result = import_records(
+                        exp_path,
+                        final_records,
+                        duplicate_policy=duplicate_policy,
+                    )
+
+                    st.success(
+                        f"{len(result['log_df'])} file(s) processed and classified."
+                    )
+                    st.dataframe(
+                        result["counts_df"],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                    with st.expander("Import log", expanded=False):
+                        st.dataframe(
+                            result["log_df"],
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                        st.code(str(result["log_csv"]))
+                        st.code(str(result["metadata_path"]))
+
+                    if run_after_import:
+                        imported_methods = [
+                            method
+                            for method in ["DPV", "SWV", "EIS", "CV"]
+                            if method in set(
+                                result["log_df"]
+                                .loc[
+                                    result["log_df"]["Status"] != "Skipped duplicate",
+                                    "Selected type",
+                                ]
+                                .astype(str)
+                            )
+                        ]
+
+                        if imported_methods:
+                            with st.spinner("Running Auto Analyze..."):
+                                completed, failed = run_selected_methods(
+                                    exp_path=exp_path,
+                                    methods=imported_methods,
+                                    use_abs_fit=True,
+                                )
+
+                            auto_summary = summary_dataframe(completed, failed)
+                            auto_log_csv, auto_log_txt = save_auto_analysis_log(
+                                exp_path,
+                                auto_summary,
+                            )
+
+                            st.write("#### Auto Analyze result")
+                            st.dataframe(
+                                auto_summary,
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+                            st.code(str(auto_log_csv))
+                            st.code(str(auto_log_txt))
+                        else:
+                            st.info(
+                                "No DPV, SWV, EIS, or CV files were available "
+                                "for Auto Analyze."
+                            )
+            else:
+                st.info(
+                    "Upload a folder or ZIP to preview automatic classification."
+                )
 
         with import_tab:
             category = st.selectbox(

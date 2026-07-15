@@ -1,0 +1,2 @@
+File,Label,Concentration_pM,Concentration_M,Baseline_mode,Baseline_potential_V,Baseline_current_uA,Peak_potential_V,Peak_current_uA,DeltaPeak_peak_minus_preceding_min_uA
+3-pbs.mts,3-pbs.mts,0.0,0.0,fixed_region,0.0,19.012498,0.0,19.012498,14.683332

@@ -1,0 +1,4 @@
+DPV Analysis Report\n\nBaseline mode: fixed_region\nPeak search: 0.3–0.7 V\nBaseline search start: 0.05 V\n\nPeak values:\n     File     Label  Concentration_pM  Concentration_M  Baseline_potential_V  Baseline_current_uA  Peak_potential_V  Peak_current_uA  DeltaPeak_max_minus_min_uA  DeltaDeltaPeak_vs_zero_uA  Abs_DeltaDeltaPeak_vs_zero_uA
+3-pbs.mtd 3-pbs.mtd               0.0              0.0                   0.0            13.074998               0.0        13.074998                    9.829165                        0.0                            0.0\n\nFit summary:\nEmpty DataFrame
+Columns: []
+Index: []

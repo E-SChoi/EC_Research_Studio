@@ -1,7 +1,5 @@
-# Release Note — v1.7.1 Sidebar UI
+# Release Note — v1.7.2
 
-This release changes only the top-level navigation.
+Smart Folder Import allows the user to upload all files from one experimental session together.
 
-The previous top tab bar has been replaced by a sidebar menu. Each page is isolated, so users see only the selected function instead of a long continuous page.
-
-Electrochemical analysis calculations, raw-file parsing, project folders, and saved experimental data were not changed.
+The app classifies native DPV, SWV, and EIS files automatically, shows a review table, and saves them into the correct Experiment folders. Existing electrochemical calculations were not changed.

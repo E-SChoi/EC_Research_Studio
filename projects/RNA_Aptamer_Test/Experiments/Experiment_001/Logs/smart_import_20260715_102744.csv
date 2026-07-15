@@ -1,0 +1,6 @@
+﻿Imported at,Source,Original path,Original filename,Detected type,Selected type,Destination,Duplicate policy,Status,Size (KB)
+2026-07-15 10:27:44,EC_Research_Studio_v1_7_2_SampleExperiment.zip,Today_Experiment/3-pbs.mtd,3-pbs.mtd,DPV,DPV,RawData\DPV\3-pbs.mtd,Rename with timestamp,Imported,46.11
+2026-07-15 10:27:44,EC_Research_Studio_v1_7_2_SampleExperiment.zip,Today_Experiment/3-pbs.mts,3-pbs.mts,SWV,SWV,RawData\SWV\3-pbs.mts,Rename with timestamp,Imported,45.88
+2026-07-15 10:27:44,EC_Research_Studio_v1_7_2_SampleExperiment.zip,Today_Experiment/3-pbs.mteisp,3-pbs.mteisp,EIS,EIS,RawData\EIS\3-pbs.mteisp,Rename with timestamp,Imported,4516.91
+2026-07-15 10:27:44,EC_Research_Studio_v1_7_2_SampleExperiment.zip,Today_Experiment/experiment_note.txt,experiment_note.txt,Other,Other,Attachments\Other\experiment_note.txt,Rename with timestamp,Imported,0.01
+2026-07-15 10:27:44,EC_Research_Studio_v1_7_2_SampleExperiment.zip,Today_Experiment/unclassified.csv,unclassified.csv,Review required,Review required,Attachments\ReviewRequired\unclassified.csv,Rename with timestamp,Imported,0.01

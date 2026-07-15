@@ -1,18 +1,24 @@
-# EC Research Studio v1.7.1 User Guide
+# EC Research Studio v1.7.2 User Guide
 
-## Opening a page
-1. Start the app with `streamlit run main.py`.
-2. Use the navigation menu in the left sidebar.
-3. Select one page.
-4. Only that page appears in the main area.
+## Smart Folder Import
+1. Open `Today`.
+2. Select an Experiment.
+3. Open `Smart Folder Import`.
+4. Choose `Folder upload` or `ZIP upload`.
+5. Drag the complete experiment folder or ZIP.
+6. Review automatic classification.
+7. Change `Selected type` when necessary.
+8. Choose a duplicate-file policy.
+9. Optionally select `Run Auto Analyze after import`.
+10. Click `Classify and save to Experiment`.
 
-## Recommended workflow
-1. Today — import current files and write a quick note.
-2. Auto Analyze — run one or more analyses.
-3. Experiment Summary — review the latest graph and ΔPeak.
-4. Analysis History — find previous experiments.
-5. Results — inspect result tables and figures.
-6. ELN — save detailed experiment notes.
+## Classification
+- `.mtd`: DPV
+- `.mts`: SWV
+- `.mteisp`: EIS
+- Image files: Attachments/Images
+- Documents: Attachments/Other
+- `.csv`: Review required
 
-## Returning to another page
-Select another item from the sidebar. There is no need to scroll through unrelated sections.
+## Recommended duplicate policy
+Use `Rename with timestamp` to preserve both the old and new files.

@@ -1,8 +1,12 @@
-# Validation Report — v1.7.1
+# Validation Report — v1.7.2
 
-Validation completed:
-- Full Python syntax compilation.
-- Confirmed all 18 top-level pages map to one sidebar option.
-- Confirmed no top-level `with tab...` blocks remain.
-- Confirmed nested tabs inside Today, Results, Database, and ELN remain intact.
-- Confirmed analysis modules and raw-file parsers were not modified.
+Validated:
+- Full-project Python syntax compilation.
+- `.mtd`, `.mts`, and `.mteisp` classification.
+- ZIP extraction and nested-folder handling.
+- Image/document classification.
+- CSV `Review required` behavior.
+- Duplicate rename, skip, and overwrite policies.
+- Import CSV log generation.
+- Import JSON metadata generation.
+- Existing analysis engines and native parsers were not modified.
