@@ -1,5 +1,5 @@
-# Release Note — v1.7.2
+# Release Note — v1.8.0 Smart Experiment
 
-Smart Folder Import allows the user to upload all files from one experimental session together.
+This release reduces experiment setup and repeated data entry.
 
-The app classifies native DPV, SWV, and EIS files automatically, shows a review table, and saves them into the correct Experiment folders. Existing electrochemical calculations were not changed.
+A concentration-series folder can now become a complete Experiment. The app proposes the folder name as the Experiment name, classifies native files, detects concentrations, imports the files, and can immediately run the existing analysis engines.

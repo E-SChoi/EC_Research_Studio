@@ -23,6 +23,16 @@ from quick.workspace import (
     export_experiment_zip,
 )
 
+from smart_experiment.manager import (
+    infer_source_folder_name,
+    sanitize_experiment_name,
+    build_concentration_preview,
+    update_records_and_concentrations,
+    create_or_open_smart_experiment,
+    save_concentration_tables,
+    update_experiment_smart_metadata,
+)
+
 from smart_import.folder_import import (
     CATEGORY_DESTINATIONS,
     uploaded_files_to_records,
@@ -65,7 +75,7 @@ from workspace.results import (
 )
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v1.7.2 Smart Folder Import")
+st.title("EC Research Studio v1.8.0 Smart Experiment")
 st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
@@ -89,6 +99,7 @@ init_database(project_path)
 st.header(f"Project: {project_info['project_name']}")
 
 PAGE_OPTIONS = [
+    "Smart Experiment",
     "Today",
     "Analysis History",
     "Experiment Summary",
@@ -122,6 +133,356 @@ st.sidebar.markdown("---")
 st.sidebar.caption("Only the selected page is rendered.")
 
 
+
+
+
+if selected_page == "Smart Experiment":
+    st.subheader("Smart Experiment")
+    st.caption(
+        "Upload one concentration-series folder or ZIP. The folder name becomes "
+        "the Experiment name, files are classified automatically, and concentrations "
+        "are extracted from filenames."
+    )
+
+    input_mode = st.radio(
+        "Input format",
+        ["Folder upload", "ZIP upload"],
+        horizontal=True,
+        key="smart_exp_input_mode",
+    )
+
+    if input_mode == "Folder upload":
+        smart_exp_folder_files = st.file_uploader(
+            "Drag the complete concentration-series folder here",
+            accept_multiple_files="directory",
+            key="smart_exp_folder_upload",
+        )
+        smart_exp_records = uploaded_files_to_records(smart_exp_folder_files)
+    else:
+        smart_exp_zip = st.file_uploader(
+            "Drag the concentration-series ZIP here",
+            type=["zip"],
+            accept_multiple_files=False,
+            key="smart_exp_zip_upload",
+        )
+        try:
+            smart_exp_records = zip_upload_to_records(smart_exp_zip)
+        except Exception as e:
+            st.error(f"ZIP file could not be read: {e}")
+            smart_exp_records = []
+
+    if not smart_exp_records:
+        st.info("Upload a folder or ZIP to create a Smart Experiment.")
+    else:
+        source_folder_name = infer_source_folder_name(
+            smart_exp_records,
+            fallback="Smart_Experiment",
+        )
+        suggested_name = sanitize_experiment_name(source_folder_name)
+
+        st.write("### 1. Experiment name")
+        experiment_name = st.text_input(
+            "Suggested Experiment name",
+            value=suggested_name,
+            key="smart_exp_name",
+        )
+
+        collision_policy = st.selectbox(
+            "If an Experiment with the same name already exists",
+            [
+                "Create new with timestamp",
+                "Use existing",
+                "Cancel",
+            ],
+            index=0,
+            key="smart_exp_collision",
+        )
+
+        st.write("### 2. File classification")
+        classification_df = records_preview_dataframe(smart_exp_records)
+        edited_classification = st.data_editor(
+            classification_df,
+            use_container_width=True,
+            hide_index=True,
+            disabled=[
+                "Record ID",
+                "Original path",
+                "File",
+                "Detected type",
+                "Destination",
+                "Size (KB)",
+                "Source",
+            ],
+            column_config={
+                "Selected type": st.column_config.SelectboxColumn(
+                    "Selected type",
+                    options=[
+                        "DPV",
+                        "SWV",
+                        "EIS",
+                        "CV",
+                        "Images",
+                        "Other",
+                        "Review required",
+                    ],
+                    required=True,
+                )
+            },
+            key="smart_exp_classification",
+        )
+        classified_records = update_records_from_preview(
+            smart_exp_records,
+            edited_classification,
+        )
+
+        st.write("### 3. Concentration recognition")
+        concentration_preview = build_concentration_preview(classified_records)
+
+        if concentration_preview.empty:
+            st.warning("No DPV, SWV, or EIS files are currently classified.")
+            edited_concentrations = concentration_preview
+        else:
+            edited_concentrations = st.data_editor(
+                concentration_preview,
+                use_container_width=True,
+                hide_index=True,
+                disabled=[
+                    "Record ID",
+                    "Method",
+                    "File",
+                    "Original path",
+                    "Detected unit",
+                    "Detection status",
+                ],
+                column_config={
+                    "Concentration_pM": st.column_config.NumberColumn(
+                        "Concentration (pM)",
+                        min_value=0.0,
+                        format="%.6g",
+                    )
+                },
+                key="smart_exp_concentrations",
+            )
+
+            review_count = int(
+                pd.to_numeric(
+                    edited_concentrations["Concentration_pM"],
+                    errors="coerce",
+                ).isna().sum()
+            )
+            if review_count:
+                st.warning(
+                    f"{review_count} concentration value(s) require review. "
+                    "Enter pM values before Auto Analyze."
+                )
+
+        st.write("### 4. Create, import, and analyze")
+        c1, c2 = st.columns(2)
+        duplicate_policy = c1.selectbox(
+            "Duplicate file policy",
+            ["Rename with timestamp", "Skip", "Overwrite"],
+            index=0,
+            key="smart_exp_duplicate",
+        )
+        run_auto = c2.checkbox(
+            "Run Auto Analyze",
+            value=True,
+            key="smart_exp_auto",
+        )
+
+        with st.expander("DPV search settings", expanded=False):
+            dpv_peak_min = st.number_input(
+                "Peak search start (V)",
+                value=0.30,
+                step=0.01,
+                format="%.3f",
+                key="smart_exp_dpv_peak_min",
+            )
+            dpv_peak_max = st.number_input(
+                "Peak search end (V)",
+                value=0.70,
+                step=0.01,
+                format="%.3f",
+                key="smart_exp_dpv_peak_max",
+            )
+            dpv_baseline_min = st.number_input(
+                "Minimum search start (V)",
+                value=0.05,
+                step=0.01,
+                format="%.3f",
+                key="smart_exp_dpv_baseline_min",
+            )
+            dpv_smoothing = st.number_input(
+                "Detection smoothing window",
+                min_value=5,
+                max_value=101,
+                value=11,
+                step=2,
+                key="smart_exp_dpv_smoothing",
+            )
+
+        if st.button(
+            "Create Smart Experiment",
+            type="primary",
+            key="smart_exp_create",
+        ):
+            final_records = update_records_and_concentrations(
+                classified_records,
+                edited_concentrations,
+            )
+
+            unresolved = [
+                record["File"]
+                for record in final_records
+                if record.get("Selected type") in ["DPV", "SWV", "EIS"]
+                and record.get("Concentration_pM") is None
+            ]
+
+            if run_auto and unresolved:
+                st.error(
+                    "Auto Analyze was not started because these files have no "
+                    f"confirmed concentration: {', '.join(unresolved)}"
+                )
+            else:
+                exp_path, create_action = create_or_open_smart_experiment(
+                    project_path=project_path,
+                    project_info=project_info,
+                    experiment_name=experiment_name,
+                    collision_policy=collision_policy,
+                    metadata={
+                        "source_folder_name": source_folder_name,
+                        "created_from": input_mode,
+                    },
+                )
+
+                if exp_path is None:
+                    st.info("Smart Experiment creation was cancelled.")
+                else:
+                    import_result = import_records(
+                        exp_path,
+                        final_records,
+                        duplicate_policy=duplicate_policy,
+                    )
+                    concentration_info = save_concentration_tables(
+                        exp_path,
+                        final_records,
+                    )
+
+                    completed = []
+                    failed = []
+                    auto_summary = None
+
+                    imported_methods = [
+                        method
+                        for method in ["DPV", "SWV", "EIS", "CV"]
+                        if method in set(
+                            import_result["log_df"]
+                            .loc[
+                                import_result["log_df"]["Status"]
+                                != "Skipped duplicate",
+                                "Selected type",
+                            ]
+                            .astype(str)
+                        )
+                    ]
+
+                    if run_auto and imported_methods:
+                        with st.spinner("Running Auto Analyze..."):
+                            completed, failed = run_selected_methods(
+                                exp_path=exp_path,
+                                methods=imported_methods,
+                                use_abs_fit=True,
+                                dpv_baseline_mode="preceding_local_minimum",
+                                dpv_peak_search_min_v=float(dpv_peak_min),
+                                dpv_peak_search_max_v=float(dpv_peak_max),
+                                dpv_baseline_search_min_v=float(dpv_baseline_min),
+                                dpv_smoothing_window=int(dpv_smoothing),
+                            )
+                        auto_summary = summary_dataframe(completed, failed)
+                        save_auto_analysis_log(exp_path, auto_summary)
+
+                    update_experiment_smart_metadata(
+                        exp_path=exp_path,
+                        source_name=source_folder_name,
+                        concentration_table_info=concentration_info,
+                        import_result=import_result,
+                        auto_analysis_summary=auto_summary,
+                    )
+
+                    st.success(
+                        f"Smart Experiment ready: {exp_path.name} "
+                        f"({create_action})"
+                    )
+
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric(
+                        "DPV",
+                        int(
+                            (
+                                import_result["log_df"]["Selected type"]
+                                == "DPV"
+                            ).sum()
+                        ),
+                    )
+                    m2.metric(
+                        "SWV",
+                        int(
+                            (
+                                import_result["log_df"]["Selected type"]
+                                == "SWV"
+                            ).sum()
+                        ),
+                    )
+                    m3.metric(
+                        "EIS",
+                        int(
+                            (
+                                import_result["log_df"]["Selected type"]
+                                == "EIS"
+                            ).sum()
+                        ),
+                    )
+                    m4.metric(
+                        "Concentrations",
+                        int(
+                            concentration_info["all_table"][
+                                "Concentration_pM"
+                            ].nunique(dropna=True)
+                        )
+                        if not concentration_info["all_table"].empty
+                        else 0,
+                    )
+
+                    st.write("#### Concentration tables")
+                    st.dataframe(
+                        concentration_info["all_table"],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                    if concentration_info["all_csv"] is not None:
+                        st.code(str(concentration_info["all_csv"]))
+
+                    if auto_summary is not None:
+                        st.write("#### Auto Analyze summary")
+                        st.dataframe(
+                            auto_summary,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+
+                    recent = recent_figures(exp_path, limit=8)
+                    if recent:
+                        st.write("#### Generated graphs")
+                        cols = st.columns(4)
+                        for i, fig_path in enumerate(recent):
+                            with cols[i % 4]:
+                                st.image(
+                                    str(fig_path),
+                                    caption=fig_path.name,
+                                    use_container_width=True,
+                                )
+
+                    st.code(str(exp_path))
 
 
 if selected_page == "Today":

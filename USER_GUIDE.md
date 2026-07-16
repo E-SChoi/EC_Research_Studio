@@ -1,24 +1,29 @@
-# EC Research Studio v1.7.2 User Guide
+# EC Research Studio v1.8.0 User Guide
 
-## Smart Folder Import
-1. Open `Today`.
-2. Select an Experiment.
-3. Open `Smart Folder Import`.
-4. Choose `Folder upload` or `ZIP upload`.
-5. Drag the complete experiment folder or ZIP.
-6. Review automatic classification.
-7. Change `Selected type` when necessary.
-8. Choose a duplicate-file policy.
-9. Optionally select `Run Auto Analyze after import`.
-10. Click `Classify and save to Experiment`.
+## Smart Experiment
+1. Open `Smart Experiment` from the sidebar.
+2. Choose Folder upload or ZIP upload.
+3. Drag one folder containing all concentration files.
+4. Confirm the suggested Experiment name.
+5. Review DPV/SWV/EIS classification.
+6. Review concentrations converted to pM.
+7. Correct any unrecognized concentration.
+8. Keep `Run Auto Analyze` selected when immediate analysis is desired.
+9. Click `Create Smart Experiment`.
+10. Review concentration tables, analysis status, and generated graphs.
 
-## Classification
-- `.mtd`: DPV
-- `.mts`: SWV
-- `.mteisp`: EIS
-- Image files: Attachments/Images
-- Documents: Attachments/Other
-- `.csv`: Review required
+## Recommended folder naming
+Use a descriptive name such as:
+`2026-07-16_RNA_Aptamer_0-500pM`
 
-## Recommended duplicate policy
-Use `Rename with timestamp` to preserve both the old and new files.
+This becomes the suggested Experiment name.
+
+## Recommended file naming
+- `3-pbs.mtd`
+- `4-10pM.mtd`
+- `5-50pM.mtd`
+- `6-100pM.mtd`
+- `7-250pM.mtd`
+- `8-500pM.mtd`
+
+The order prefix does not affect concentration recognition.
