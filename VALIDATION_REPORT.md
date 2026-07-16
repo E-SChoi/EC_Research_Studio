@@ -1,14 +1,3 @@
-# Validation Report — v1.8.0
+# Validation Report v1.8.2
 
-Validated:
-- Full-project Python syntax compilation.
-- Folder-name inference.
-- ZIP-name fallback.
-- Experiment-name sanitization.
-- Existing-name collision handling.
-- PBS/zero/blank/control recognition.
-- pM, nM, µM, mM, and M conversion to pM.
-- Concentration sorting.
-- DPV/SWV/EIS concentration-table generation.
-- Smart Experiment metadata update.
-- Existing analysis engines and native parsers were not modified.
+Validated syntax, diagnostics, exclusions, recalculated fitting, figures, CSV, and JSON logs.

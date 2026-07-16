@@ -23,6 +23,23 @@ from quick.workspace import (
     export_experiment_zip,
 )
 
+from data_review.outlier_control import (
+    list_experiments as review_list_experiments,
+    find_calibration_table,
+    prepare_review_table,
+    recalculate_review,
+    create_review_figure,
+    save_review_outputs,
+)
+
+from explorer.experiment_explorer import (
+    list_experiments,
+    compare_experiments,
+    build_comparison_series,
+    calculated_comparison_text,
+    create_comparison_html,
+)
+
 from smart_experiment.manager import (
     infer_source_folder_name,
     sanitize_experiment_name,
@@ -75,7 +92,7 @@ from workspace.results import (
 )
 
 st.set_page_config(page_title="EC Research Studio", layout="wide")
-st.title("EC Research Studio v1.8.0 Smart Experiment")
+st.title("EC Research Studio v1.8.2 Data Review & Outlier Control")
 st.caption("Integrated electrochemical research platform: DPV / SWV / EIS / CV / Statistics / Figures")
 
 st.sidebar.header("Project")
@@ -100,6 +117,8 @@ st.header(f"Project: {project_info['project_name']}")
 
 PAGE_OPTIONS = [
     "Smart Experiment",
+    "Experiment Explorer",
+    "Data Review",
     "Today",
     "Analysis History",
     "Experiment Summary",
@@ -484,6 +503,169 @@ if selected_page == "Smart Experiment":
 
                     st.code(str(exp_path))
 
+
+
+if selected_page == "Experiment Explorer":
+    st.subheader("Experiment Explorer")
+    st.caption(
+        "여러 Experiment의 정량 결과와 최신 Figure를 같은 화면에서 비교합니다."
+    )
+
+    explorer_experiments = list_experiments(project_path)
+
+    if len(explorer_experiments) < 2:
+        st.info("비교하려면 두 개 이상의 Experiment가 필요합니다.")
+    else:
+        selected_experiments = st.multiselect(
+            "Experiments to compare",
+            explorer_experiments,
+            default=explorer_experiments[-2:],
+            max_selections=6,
+            key="explorer_experiments",
+        )
+        selected_method = st.selectbox(
+            "Method",
+            ["DPV", "SWV", "EIS", "CV"],
+            key="explorer_method",
+        )
+
+        if len(selected_experiments) < 2:
+            st.warning("두 개 이상의 Experiment를 선택해줘.")
+        else:
+            summary_df, explorer_details = compare_experiments(
+                project_path,
+                selected_experiments,
+                selected_method,
+            )
+
+            st.write("### Key result comparison")
+            st.dataframe(
+                summary_df,
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.download_button(
+                "Download comparison CSV",
+                data=summary_df.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"{selected_method}_experiment_comparison.csv",
+                mime="text/csv",
+                key="explorer_csv_download",
+            )
+
+            comparison_series = build_comparison_series(
+                explorer_details,
+                selected_method,
+            )
+
+            st.write("### Quantitative comparison graph")
+            if comparison_series.empty:
+                st.info("공통 농도와 비교 지표를 가진 결과 테이블이 없습니다.")
+            else:
+                chart_df = comparison_series.pivot_table(
+                    index="Concentration_pM",
+                    columns="Experiment",
+                    values="Value",
+                    aggfunc="mean",
+                ).sort_index()
+                st.line_chart(chart_df)
+
+                with st.expander("Graph data", expanded=False):
+                    st.dataframe(
+                        comparison_series,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+            st.write("### Latest figures")
+            figure_cols = st.columns(min(3, len(selected_experiments)))
+            for i, experiment in enumerate(selected_experiments):
+                figure_path = explorer_details.get(experiment, {}).get("figure")
+                with figure_cols[i % len(figure_cols)]:
+                    st.write(f"**{experiment}**")
+                    if figure_path is not None and Path(figure_path).exists():
+                        st.image(
+                            str(figure_path),
+                            caption=Path(figure_path).name,
+                            use_container_width=True,
+                        )
+                    else:
+                        st.info("Figure 없음")
+
+            comparison_text = calculated_comparison_text(
+                summary_df,
+                selected_method,
+            )
+            st.write("### Calculated comparison")
+            st.text_area(
+                "Comparison summary",
+                value=comparison_text,
+                height=150,
+                key="explorer_comparison_text",
+            )
+
+            if st.button(
+                "Create HTML Comparison Report",
+                type="primary",
+                key="explorer_html_create",
+            ):
+                explorer_html = create_comparison_html(
+                    project_path=project_path,
+                    experiment_names=selected_experiments,
+                    method=selected_method,
+                    summary_df=summary_df,
+                    details=explorer_details,
+                    comparison_text=comparison_text,
+                )
+                st.success("HTML comparison report created.")
+                with open(explorer_html, "rb") as f:
+                    st.download_button(
+                        "Download HTML report",
+                        data=f.read(),
+                        file_name=explorer_html.name,
+                        mime="text/html",
+                        key="explorer_html_download",
+                    )
+
+
+if selected_page == "Data Review":
+    st.subheader("Data Review & Outlier Control")
+    st.caption("이상치 후보는 자동 제안되지만 제외 결정은 사용자가 합니다. 원본 결과는 변경하지 않습니다.")
+    exps=review_list_experiments(project_path)
+    if not exps:
+        st.info("검토할 Experiment가 없습니다.")
+    else:
+        exp_name=st.selectbox("Experiment",exps,key="review_exp")
+        method=st.selectbox("Method",["DPV","SWV","EIS"],key="review_method")
+        exp_path=Path(project_path)/"Experiments"/exp_name
+        source_path,source_df=find_calibration_table(exp_path,method)
+        if source_df is None or source_df.empty:
+            st.warning("검토 가능한 calibration 결과 테이블을 찾지 못했습니다.")
+        else:
+            try: review_table=prepare_review_table(source_df,method)
+            except Exception as e:
+                st.error(f"검토 테이블 생성 실패: {e}"); review_table=pd.DataFrame()
+            if not review_table.empty:
+                st.write("### Statistical diagnostics")
+                st.caption("기본 기준: |studentized residual| > 2, Cook's distance > 4/n, |MAD robust z-score| > 3.5")
+                edited=st.data_editor(review_table,use_container_width=True,hide_index=True,disabled=["Point ID","Label","Concentration_pM","Signal","Residual","Studentized residual","Cook's distance","MAD robust z-score","Recommendation"],column_config={"Decision":st.column_config.SelectboxColumn("Decision",options=["Keep","Exclude from fitting","Exclude entirely"],required=True),"Exclusion reason":st.column_config.TextColumn("Exclusion reason")},key="review_editor")
+                excluded=edited[edited["Decision"]!="Keep"]
+                missing=excluded[excluded["Exclusion reason"].astype(str).str.strip()==""]
+                if not missing.empty: st.warning("제외한 모든 포인트에 Exclusion reason을 입력해줘.")
+                result=recalculate_review(edited)
+                st.write("### Original vs reviewed fit")
+                st.dataframe(result["metrics_df"],use_container_width=True,hide_index=True)
+                preview_path=exp_path/"Figures"/method/"Reviewed"/"review_preview.png"
+                if st.button("Recalculate and preview",type="primary",key="review_recalculate"):
+                    create_review_figure(edited,preview_path,title=f"{exp_name} — {method} reviewed calibration")
+                    st.success("Reviewed graph recalculated.")
+                if preview_path.exists(): st.image(str(preview_path),caption=preview_path.name,use_container_width=True)
+                if st.button("Save reviewed result",key="review_save"):
+                    if not missing.empty: st.error("Exclusion reason이 없는 포인트가 있어 저장하지 않았습니다.")
+                    else:
+                        create_review_figure(edited,preview_path,title=f"{exp_name} — {method} reviewed calibration")
+                        saved=save_review_outputs(exp_path,method,source_path,edited,result["metrics_df"],preview_path)
+                        st.success("Reviewed result and exclusion log saved.")
+                        for k in ["reviewed_csv","metrics_csv","log_json","figure_path"]: st.code(str(saved[k]))
 
 if selected_page == "Today":
     st.subheader("Today's Experiment")
