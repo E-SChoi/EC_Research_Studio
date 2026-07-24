@@ -1,4 +1,0 @@
-Method    Status  Raw files Message                                                 Result directory                                                 Figure directory
-   DPV Completed          1         projects\RNA_Aptamer_Test\Experiments\Experiment_001\Results\DPV projects\RNA_Aptamer_Test\Experiments\Experiment_001\Figures\DPV
-   SWV Completed          1         projects\RNA_Aptamer_Test\Experiments\Experiment_001\Results\SWV projects\RNA_Aptamer_Test\Experiments\Experiment_001\Figures\SWV
-   EIS Completed          1         projects\RNA_Aptamer_Test\Experiments\Experiment_001\Results\EIS projects\RNA_Aptamer_Test\Experiments\Experiment_001\Figures\EIS

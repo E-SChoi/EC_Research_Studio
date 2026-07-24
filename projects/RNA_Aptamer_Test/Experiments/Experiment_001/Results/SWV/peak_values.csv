@@ -1,2 +1,0 @@
-File,Label,Concentration_pM,Concentration_M,Baseline_potential_V,Baseline_current_uA,Peak_potential_V,Peak_current_uA,DeltaPeak_max_minus_min_uA,DeltaDeltaPeak_vs_zero_uA,Abs_DeltaDeltaPeak_vs_zero_uA
-3-pbs.mts,3-pbs.mts,0.0,0.0,0.0,19.012498,0.0,19.012498,14.683332,0.0,0.0

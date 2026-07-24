@@ -1,4 +1,0 @@
-EIS Analysis Report\n\nRct values:\n        File        Label  Concentration_pM  Concentration_M     Rct_ohm   Circle_xc   Circle_yc  Circle_r  DeltaRct_vs_zero_ohm  Abs_DeltaRct_vs_zero_ohm
-3-pbs.mteisp 3-pbs.mteisp               0.0              0.0 8244.851006 4193.310714 -846.282412 4208.3947                   0.0                       0.0\n\nFit summary:\nEmpty DataFrame
-Columns: []
-Index: []
